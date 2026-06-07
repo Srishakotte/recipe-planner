@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Recipe {
+  id              String   @id @default(uuid())
+  name            String
+  defaultServings Int      @default(2)
+  description     String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  ingredients     Ingredient[]
+  mealPlanEntries MealPlanEntry[]
+
+  @@map("recipes")
+}
+
+model Ingredient {
+  id           String  @id @default(uuid())
+  recipeId     String
+  name         String
+  displayName  String?
+  quantity     Float
+  unit         String
+  storeSection String  @default("other")
+  sortOrder    Int     @default(0)
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("ingredients")
+}
+
+model MealPlanEntry {
+  id        String   @id @default(uuid())
+  recipeId  String
+  planDate  DateTime @db.Date
+  mealSlot  String   @default("dinner")
+  servings  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("meal_plan_entries")
+}
+
+model PantryItem {
+  id             String    @id @default(uuid())
+  name           String
+  quantity       Float
+  unit           String
+  expirationDate DateTime? @db.Date
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("pantry_items")
+}
+
+model GroceryItem {
+  id             String  @id @default(uuid())
+  ingredientName String
+  computedQty    Float
+  unit           String
+  storeSection   String  @default("other")
+  sourceRecipes  Json?
+  warnings       Json?
+  isAdHoc        Boolean @default(false)
+  overrideQty    Float?
+  isChecked      Boolean @default(false)
+  isAlreadyHave  Boolean @default(false)
+
+  generationId String
+  generation   GroceryGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("grocery_items")
+}
+
+model GroceryGeneration {
+  id          String   @id @default(uuid())
+  version     Int      @default(1)
+  inputHash   String?
+  generatedAt DateTime @default(now())
+
+  items GroceryItem[]
+
+  @@map("grocery_generations")
+}
+
+model IngredientSynonym {
+  id            String @id @default(uuid())
+  synonym       String @unique
+  canonicalName String
+
+  @@map("ingredient_synonyms")
+}
+
+model UnitConversion {
+  id             String @id @default(uuid())
+  fromUnit       String
+  toUnit         String
+  multiplier     Float
+  conversionType String
+
+  @@map("unit_conversions")
+}
+
+model IngredientDensity {
+  id             String @id @default(uuid())
+  ingredientName String @unique
+  gramsPerMl     Float
+
+  @@map("ingredient_densities")
+}
+
+model Substitution {
+  id                   String  @id @default(uuid())
+  originalIngredient   String
+  substituteIngredient String
+  quantityRatio        Float   @default(1.0)
+  substituteUnit       String?
+  constraintType       String
+  constraintValue      String
+
+  @@map("substitutions")
+}
+
+model UserConstraint {
+  id              String  @id @default(uuid())
+  constraintType  String
+  constraintValue String
+  isActive        Boolean @default(true)
+
+  @@map("user_constraints")
+}
