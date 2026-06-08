@@ -145,8 +145,10 @@ async function main() {
       { name: 'flour', quantity: 2, unit: 'kg' },
       { name: 'rice', quantity: 1, unit: 'kg' },
       { name: 'soy sauce', quantity: 250, unit: 'ml' },
-      { name: 'onion', quantity: 3, unit: 'piece' },
-      { name: 'garlic', quantity: 8, unit: 'clove' },
+      { name: 'onion', quantity: 3, unit: 'piece', expirationDate: new Date(Date.now() + 2 * 86400000) },
+      { name: 'garlic', quantity: 8, unit: 'clove', expirationDate: new Date(Date.now() + 5 * 86400000) },
+      { name: 'milk', quantity: 1, unit: 'l', expirationDate: new Date(Date.now() + 1 * 86400000) },
+      { name: 'eggs', quantity: 6, unit: 'piece', expirationDate: new Date(Date.now() + 7 * 86400000) },
     ],
   });
 
