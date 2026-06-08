@@ -37,6 +37,7 @@ router.post('/', async (req: Request, res: Response) => {
     const recipe = await prisma.recipe.create({
       data: {
         name, defaultServings: defaultServings || 2, description: description || null,
+        steps: req.body.steps || null,
         ingredients: {
           create: ingredients.map((ing: any, index: number) => ({
             name: ing.name.toLowerCase().trim(), displayName: ing.displayName || ing.name,
@@ -58,6 +59,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       where: { id: req.params.id },
       data: {
         name, defaultServings, description,
+        steps: req.body.steps || null,
         ingredients: {
           create: ingredients.map((ing: any, index: number) => ({
             name: ing.name.toLowerCase().trim(), displayName: ing.displayName || ing.name,

@@ -12,6 +12,7 @@ model Recipe {
   name            String
   defaultServings Int      @default(2)
   description     String?  @db.Text
+  steps           String?  @db.Text
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
