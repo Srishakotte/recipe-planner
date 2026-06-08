@@ -70,13 +70,18 @@ export default function GroceryListPage() {
     await deleteItem(id);
   };
 
-  // Group items by store section
+  // Group items by store section, separate pantry-covered items
   const groupedItems: Record<string, GroceryItem[]> = {};
+  const pantryItems: GroceryItem[] = [];
   if (groceryList?.items) {
     groceryList.items.forEach((item) => {
-      const section = item.storeSection || 'Other';
-      if (!groupedItems[section]) groupedItems[section] = [];
-      groupedItems[section].push(item);
+      if (item.isAlreadyHave || item.computedQty === 0) {
+        pantryItems.push(item);
+      } else {
+        const section = item.storeSection || 'Other';
+        if (!groupedItems[section]) groupedItems[section] = [];
+        groupedItems[section].push(item);
+      }
     });
   }
 
@@ -140,9 +145,29 @@ export default function GroceryListPage() {
           <p className="text-sm font-medium text-yellow-800 mb-1">Warnings:</p>
           <ul className="text-sm text-yellow-700 list-disc list-inside">
             {groceryList.warnings.map((w, i) => (
-              <li key={i}>{w}</li>
+              <li key={i}>{typeof w === 'string' ? w : (w as any).message}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Stats bar */}
+      {groceryList?.items && groceryList.items.length > 0 && (
+        <div className="mb-4 flex items-center gap-4 px-4 py-2.5 bg-white border border-gray-200 rounded-lg">
+          <span className="text-sm font-medium text-gray-700">
+            {groceryList.items.filter(i => !i.isChecked && !i.isAlreadyHave).length} items to buy
+          </span>
+          <span className="text-sm text-green-600">
+            {groceryList.items.filter(i => i.isAlreadyHave).length} in pantry
+          </span>
+          <span className="text-sm text-gray-500">
+            {groceryList.items.filter(i => i.isChecked).length} checked off
+          </span>
+          {groceryList.items.some(i => i.warnings && (i.warnings as any[]).length > 0) && (
+            <span className="text-sm text-yellow-600">
+              ⚠ {groceryList.items.filter(i => i.warnings && (i.warnings as any[]).length > 0).length} warnings
+            </span>
+          )}
         </div>
       )}
 
@@ -191,10 +216,16 @@ export default function GroceryListPage() {
                         <span className="ml-2 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">have it</span>
                       )}
                       {item.sourceRecipes && item.sourceRecipes.length > 0 && (
-                        <p className="text-xs text-gray-400 mt-0.5">From: {item.sourceRecipes.join(', ')}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          From: {(item.sourceRecipes as any[]).map((s: any) => 
+                            typeof s === 'string' ? s : `${s.recipeName} (${s.contributionQty}${item.unit})`
+                          ).join(', ')}
+                        </p>
                       )}
                       {item.warnings && item.warnings.length > 0 && (
-                        <p className="text-xs text-yellow-600 mt-0.5">⚠ {item.warnings.join(', ')}</p>
+                        <p className="text-xs text-yellow-600 mt-0.5">
+                          ⚠ {(item.warnings as any[]).map((w: any) => typeof w === 'string' ? w : w.message).join(', ')}
+                        </p>
                       )}
                     </div>
                     <div className="flex items-center gap-1">
@@ -252,6 +283,24 @@ export default function GroceryListPage() {
               </div>
             </div>
           ))}
+
+          {/* Already in Pantry section */}
+          {pantryItems.length > 0 && (
+            <div className="bg-white border border-green-200 rounded-lg overflow-hidden opacity-70">
+              <div className="bg-green-100 px-4 py-2 border-b border-green-200">
+                <h2 className="font-semibold text-green-700">✓ Already in Pantry ({pantryItems.length})</h2>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {pantryItems.map((item) => (
+                  <div key={item.id} className="px-4 py-2 flex items-center gap-3 text-gray-400">
+                    <span className="text-green-500">✓</span>
+                    <span className="line-through">{item.ingredientName}</span>
+                    <span className="text-xs ml-auto">{item.computedQty} {item.unit} covered</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
