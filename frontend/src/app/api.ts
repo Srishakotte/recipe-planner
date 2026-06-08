@@ -90,11 +90,11 @@ export const api = createApi({
       query: (id) => `/recipes/${id}`,
       providesTags: (_result, _error, id) => [{ type: 'Recipes', id }],
     }),
-    createRecipe: builder.mutation<Recipe, Partial<Recipe>>({
+    createRecipe: builder.mutation<Recipe, { name: string; description?: string; defaultServings: number; ingredients: Omit<Ingredient, 'id'>[] }>({
       query: (body) => ({ url: '/recipes', method: 'POST', body }),
       invalidatesTags: ['Recipes'],
     }),
-    updateRecipe: builder.mutation<Recipe, { id: string; data: Partial<Recipe> }>({
+    updateRecipe: builder.mutation<Recipe, { id: string; data: { name: string; description?: string; defaultServings: number; ingredients: Omit<Ingredient, 'id'>[] } }>({
       query: ({ id, data }) => ({ url: `/recipes/${id}`, method: 'PUT', body: data }),
       invalidatesTags: ['Recipes'],
     }),
@@ -169,7 +169,11 @@ export const api = createApi({
       invalidatesTags: ['GroceryList'],
     }),
     addAdHocItem: builder.mutation<GroceryItem, { ingredientName: string; computedQty: number; unit: string; storeSection: string }>({
-      query: (body) => ({ url: '/grocery/items/ad-hoc', method: 'POST', body }),
+      query: ({ ingredientName, computedQty, unit, storeSection }) => ({ 
+        url: '/grocery/items/ad-hoc', 
+        method: 'POST', 
+        body: { name: ingredientName, quantity: computedQty, unit, storeSection } 
+      }),
       invalidatesTags: ['GroceryList'],
     }),
     deleteGroceryItem: builder.mutation<void, string>({
