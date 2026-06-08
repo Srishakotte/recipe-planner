@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   useGetMealPlanQuery,
   useGetRecipesQuery,
   useAddMealPlanEntryMutation,
   useUpdateMealPlanEntryMutation,
   useDeleteMealPlanEntryMutation,
+  useGenerateGroceryListMutation,
   MealPlanEntry,
 } from '../../../app/api';
 
@@ -31,6 +32,22 @@ export default function MealPlanPage() {
   const [addEntry] = useAddMealPlanEntryMutation();
   const [updateEntry] = useUpdateMealPlanEntryMutation();
   const [deleteEntry] = useDeleteMealPlanEntryMutation();
+  const [generateList] = useGenerateGroceryListMutation();
+
+  // auto-regenerate grocery list when meal plan changes (debounced)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevEntriesLength = useRef(entries?.length ?? 0);
+
+  useEffect(() => {
+    if (entries && entries.length !== prevEntriesLength.current) {
+      prevEntriesLength.current = entries.length;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        generateList();
+      }, 500);
+    }
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [entries, generateList]);
 
   const getEntriesForSlot = (day: string, slot: string) => {
     if (!entries) return [];
@@ -79,6 +96,14 @@ export default function MealPlanPage() {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Meal Plan</h1>
+        <button
+          onClick={() => generateList()}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          Generate Grocery List
+        </button>
+      </div>
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigateWeek(-1)}
@@ -104,7 +129,14 @@ export default function MealPlanPage() {
           <span className="ml-3 text-gray-600">Loading meal plan...</span>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+          {(!entries || entries.length === 0) && (
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+              <p className="text-green-800 font-medium">Plan your week!</p>
+              <p className="text-green-600 text-sm mt-1">Click the + button on any slot to add recipes. Then generate your grocery list.</p>
+            </div>
+          )}
+          <div className="overflow-x-auto">
           <div className="grid grid-cols-7 gap-2 min-w-[900px]">
             {DAYS.map((day) => (
               <div key={day} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -170,6 +202,7 @@ export default function MealPlanPage() {
             ))}
           </div>
         </div>
+        </>
       )}
 
       {/* Add Entry Modal */}
