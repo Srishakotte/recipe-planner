@@ -29,11 +29,12 @@ export default function ToastContainer() {
 
   if (toasts.length === 0) return null;
 
+  const icons = { success: '✓', info: 'ℹ', warning: '⚠', error: '✕' };
   const colors = {
-    success: 'bg-green-600',
-    info: 'bg-blue-600',
-    warning: 'bg-yellow-500',
-    error: 'bg-red-600',
+    success: 'bg-green-600 dark:bg-green-700',
+    info: 'bg-blue-600 dark:bg-blue-700',
+    warning: 'bg-amber-500 dark:bg-amber-600',
+    error: 'bg-red-600 dark:bg-red-700',
   };
 
   return (
@@ -41,9 +42,10 @@ export default function ToastContainer() {
       {toasts.map(toast => (
         <div
           key={toast.id}
-          className={`${colors[toast.type]} text-white px-4 py-3 rounded-lg shadow-lg text-sm max-w-sm animate-[slideIn_0.3s_ease-out]`}
+          className={`${colors[toast.type]} text-white px-4 py-3 rounded-xl shadow-lg text-sm max-w-sm flex items-center gap-2 animate-[slideIn_0.3s_ease-out]`}
         >
-          {toast.message}
+          <span className="text-lg">{icons[toast.type]}</span>
+          <span>{toast.message}</span>
         </div>
       ))}
     </div>
