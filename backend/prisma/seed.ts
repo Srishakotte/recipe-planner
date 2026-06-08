@@ -151,8 +151,12 @@ async function main() {
   });
 
   const today = new Date();
+  // Get Monday of current week (handles Sunday edge case)
+  const dayOfWeek = today.getDay();
   const monday = new Date(today);
-  monday.setDate(today.getDate() - today.getDay() + 1);
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  monday.setDate(today.getDate() + diff);
+  monday.setHours(12, 0, 0, 0); // noon to avoid timezone issues
 
   await prisma.mealPlanEntry.createMany({
     data: [
