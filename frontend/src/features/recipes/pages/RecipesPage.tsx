@@ -67,11 +67,11 @@ export default function RecipesPage() {
           <p className="text-gray-400 mt-2">Create your first recipe to get started!</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
           {recipes.map((recipe) => (
             <div
               key={recipe.id}
-              className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow"
+              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 card-hover"
             >
               <h3 className="text-lg font-semibold text-gray-800 mb-1">{recipe.name}</h3>
               {recipe.description && (

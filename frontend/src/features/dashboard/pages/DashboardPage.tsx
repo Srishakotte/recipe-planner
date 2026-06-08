@@ -49,22 +49,22 @@ export default function DashboardPage() {
       <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
-          <p className="text-3xl font-bold text-green-600">{data.overview.totalRecipes}</p>
-          <p className="text-sm text-gray-500 mt-1">Recipes</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 stagger-children">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-xl p-5 text-center card-hover">
+          <p className="text-4xl font-bold text-green-600 dark:text-green-400">{data.overview.totalRecipes}</p>
+          <p className="text-sm text-green-700 dark:text-green-300 mt-1 font-medium">Recipes</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
-          <p className="text-3xl font-bold text-blue-600">{data.overview.totalMealsPlanned}</p>
-          <p className="text-sm text-gray-500 mt-1">Meals Planned</p>
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 text-center card-hover">
+          <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">{data.overview.totalMealsPlanned}</p>
+          <p className="text-sm text-blue-700 dark:text-blue-300 mt-1 font-medium">Meals Planned</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
-          <p className="text-3xl font-bold text-amber-600">{data.overview.groceryListItems}</p>
-          <p className="text-sm text-gray-500 mt-1">Grocery Items</p>
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/30 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-5 text-center card-hover">
+          <p className="text-4xl font-bold text-amber-600 dark:text-amber-400">{data.overview.groceryListItems}</p>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1 font-medium">Grocery Items</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
-          <p className="text-3xl font-bold text-purple-600">{data.overview.totalPantryItems}</p>
-          <p className="text-sm text-gray-500 mt-1">Pantry Items</p>
+        <div className="bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/30 dark:to-violet-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-5 text-center card-hover">
+          <p className="text-4xl font-bold text-purple-600 dark:text-purple-400">{data.overview.totalPantryItems}</p>
+          <p className="text-sm text-purple-700 dark:text-purple-300 mt-1 font-medium">Pantry Items</p>
         </div>
       </div>
 
