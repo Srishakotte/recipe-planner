@@ -6,6 +6,7 @@ import mealPlanRoutes from './routes/mealPlan';
 import pantryRoutes from './routes/pantry';
 import groceryRoutes from './routes/grocery';
 import substitutionRoutes from './routes/substitutions';
+import analyticsRoutes from './routes/analytics';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use('/api/meal-plans', mealPlanRoutes);
 app.use('/api/pantry', pantryRoutes);
 app.use('/api/grocery', groceryRoutes);
 app.use('/api/substitutions', substitutionRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
