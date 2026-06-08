@@ -20,15 +20,13 @@ export default function Layout() {
   }, [dark]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 transition-colors duration-300">
-      <nav className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 dark:border-gray-700/50 sticky top-0 z-40">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-gray-900 dark:via-gray-950 dark:to-slate-900 transition-colors duration-300">
+      <nav className="glass sticky top-0 z-40 border-b border-gray-200/60 dark:border-gray-700/60 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">🍽️</span>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent">
-                Recipe Planner
-              </h1>
+              <span className="text-2xl animate-wiggle cursor-default">🍽️</span>
+              <h1 className="text-xl font-bold gradient-text">Recipe Planner</h1>
             </div>
             <div className="flex items-center space-x-1">
               {navItems.map((item) => (
@@ -36,29 +34,29 @@ export default function Layout() {
                   key={item.to}
                   to={item.to}
                   className={({ isActive }) =>
-                    `px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    `px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
                       isActive
-                        ? 'bg-green-100 text-green-800 shadow-sm dark:bg-green-900/50 dark:text-green-200'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 hover:scale-[1.02] dark:text-gray-300 dark:hover:bg-gray-700'
+                        ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 shadow-sm dark:from-green-900/40 dark:to-emerald-900/40 dark:text-green-200'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/80 hover:shadow-sm dark:text-gray-300 dark:hover:bg-gray-800/60'
                     }`
                   }
                 >
-                  <span className="mr-1.5">{item.icon}</span>
+                  <span className="mr-1">{item.icon}</span>
                   <span className="hidden lg:inline">{item.label}</span>
                 </NavLink>
               ))}
               <button
                 onClick={() => setDark(!dark)}
-                className="ml-3 p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 transition-all duration-200 hover:rotate-12"
+                className="ml-3 p-2.5 rounded-xl text-gray-500 hover:bg-white/80 hover:shadow-sm dark:text-gray-400 dark:hover:bg-gray-800/60 transition-all duration-200"
                 title="Toggle dark mode"
               >
-                {dark ? '☀️' : '🌙'}
+                <span className="text-lg">{dark ? '☀️' : '🌙'}</span>
               </button>
             </div>
           </div>
         </div>
       </nav>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-[fadeIn_0.3s_ease-out]">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
         <Outlet />
       </main>
       <ToastContainer />
