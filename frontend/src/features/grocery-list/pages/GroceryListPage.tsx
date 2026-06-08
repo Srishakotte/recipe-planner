@@ -9,6 +9,7 @@ import {
   useDeleteGroceryItemMutation,
   GroceryItem,
 } from '../../../app/api';
+import { showToast } from '../../../shared/components/Toast';
 
 export default function GroceryListPage() {
   const [sectionFilter, setSectionFilter] = useState('');
@@ -93,11 +94,42 @@ export default function GroceryListPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Grocery List</h1>
         <button
-          onClick={() => generateList()}
+          onClick={async () => {
+            const result = await generateList();
+            if ('data' in result) {
+              const items = (result.data as any)?.items?.length || 0;
+              showToast(`Grocery list regenerated — ${items} items`, 'success');
+            }
+          }}
           disabled={isGenerating}
           className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
         >
           {isGenerating ? 'Generating...' : 'Generate List'}
+        </button>
+      </div>
+
+      {/* Export buttons */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => {
+            const items = groceryList?.items || [];
+            const csv = ['Item,Quantity,Unit,Section,Checked']
+              .concat(items.map(i => `"${i.ingredientName}",${i.overrideQty ?? i.computedQty},"${i.unit}","${i.storeSection}",${i.isChecked}`))
+              .join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'grocery-list.csv'; a.click();
+            showToast('Exported as CSV', 'success');
+          }}
+          className="text-sm px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-600"
+        >
+          Export CSV
+        </button>
+        <button
+          onClick={() => window.print()}
+          className="text-sm px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-600"
+        >
+          Print
         </button>
       </div>
 

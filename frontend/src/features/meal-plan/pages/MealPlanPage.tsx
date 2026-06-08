@@ -8,6 +8,7 @@ import {
   useGenerateGroceryListMutation,
   MealPlanEntry,
 } from '../../../app/api';
+import { showToast } from '../../../shared/components/Toast';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -43,7 +44,11 @@ export default function MealPlanPage() {
       prevEntriesLength.current = entries.length;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        generateList();
+        generateList().then((result) => {
+          if ('data' in result) {
+            showToast('Grocery list updated', 'info');
+          }
+        });
       }, 500);
     }
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
