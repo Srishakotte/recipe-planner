@@ -254,19 +254,20 @@ export default function GroceryListPage() {
               </div>
               <div className="divide-y divide-gray-50">
                 {sectionItems.map(item => (
-                  <div key={item.id} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${item.isChecked ? 'opacity-50' : ''}`}>
+                  <div key={item.id} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${item.isChecked ? 'opacity-50' : ''} ${item.computedQty === 0 ? 'bg-green-50/40' : ''}`}>
                     <input
                       type="checkbox"
-                      checked={item.isChecked}
-                      onChange={() => handleCheck(item)}
+                      checked={item.isChecked || item.computedQty === 0}
+                      onChange={() => item.computedQty > 0 && handleCheck(item)}
                       className="w-4.5 h-4.5 rounded-md border-gray-300 text-green-600 focus:ring-green-200"
                     />
                     <div className="flex-1">
-                      <span className={`font-medium text-sm ${item.isChecked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                      <span className={`font-medium text-sm ${item.isChecked || item.computedQty === 0 ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                         {item.ingredientName}
                       </span>
+                      {item.computedQty === 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">✅ covered by pantry</span>}
                       {item.isAdHoc && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md font-medium">custom</span>}
-                      {item.isAlreadyHave && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">in pantry</span>}
+                      {item.isAlreadyHave && item.computedQty > 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">have it</span>}
                       {/* Source recipes */}
                       {item.sourceRecipes && (item.sourceRecipes as any[]).length > 0 && (
                         <p className="text-xs text-gray-400 mt-0.5">

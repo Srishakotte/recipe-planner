@@ -54,6 +54,7 @@ async function main() {
   await prisma.substitution.createMany({
     data: [
       { originalIngredient: 'milk', substituteIngredient: 'oat milk', quantityRatio: 1.0, constraintType: 'dietary', constraintValue: 'dairy-free' },
+      { originalIngredient: 'milk', substituteIngredient: 'almond milk', quantityRatio: 1.0, constraintType: 'dietary', constraintValue: 'dairy-free' },
       { originalIngredient: 'butter', substituteIngredient: 'coconut oil', quantityRatio: 1.0, constraintType: 'dietary', constraintValue: 'dairy-free' },
       { originalIngredient: 'cream', substituteIngredient: 'coconut cream', quantityRatio: 1.0, constraintType: 'dietary', constraintValue: 'dairy-free' },
       { originalIngredient: 'chicken', substituteIngredient: 'tofu', quantityRatio: 1.0, constraintType: 'dietary', constraintValue: 'vegetarian' },
