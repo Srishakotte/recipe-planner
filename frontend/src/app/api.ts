@@ -141,7 +141,7 @@ export const api = createApi({
 
     // Grocery List
     generateGroceryList: builder.mutation<GroceryListResponse, void>({
-      query: () => ({ url: '/grocery/generate', method: 'POST' }),
+      query: () => ({ url: '/grocery/generate', method: 'POST', body: { fromToday: true } }),
       invalidatesTags: ['GroceryList'],
     }),
     getGroceryList: builder.query<GroceryListResponse, { section?: string; uncheckedOnly?: boolean; warningsOnly?: boolean } | void>({

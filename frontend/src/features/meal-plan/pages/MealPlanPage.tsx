@@ -202,41 +202,59 @@ export default function MealPlanPage() {
                           </div>
                           {slotEntries.length === 0 ? (
                             <div
-                              onClick={() => setShowAddModal({ date, slot })}
-                              className="h-8 border border-dashed border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-300 hover:bg-green-50/30 transition-all"
+                              onClick={() => date >= todayStr ? setShowAddModal({ date, slot }) : null}
+                              className={`h-8 border border-dashed rounded-lg flex items-center justify-center ${
+                                date >= todayStr ? 'border-gray-200 cursor-pointer hover:border-green-300 hover:bg-green-50/30' : 'border-gray-100 bg-gray-50/30'
+                              } transition-all`}
                             >
-                              <span className="text-[10px] text-gray-300">+ add</span>
+                              <span className="text-[10px] text-gray-300">{date >= todayStr ? '+ add' : '—'}</span>
                             </div>
                           ) : (
                             slotEntries.map(entry => (
-                              <div key={entry.id} className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-1.5 mb-1 group">
+                              <div key={entry.id} className={`rounded-lg p-1.5 mb-1 group ${
+                                date < todayStr
+                                  ? 'bg-gray-50 border border-gray-200 opacity-70'
+                                  : 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200'
+                              }`}>
                                 <p className="text-[11px] font-semibold text-gray-800 truncate">
                                   {(entry as any).isLeftover && <span className="text-amber-500 mr-0.5">🍱</span>}
                                   {entry.recipe?.name}
                                 </p>
-                                <div className="flex items-center justify-between mt-0.5">
-                                  <div className="flex items-center gap-0.5">
-                                    <button
-                                      onClick={() => updateEntry({ id: entry.id, data: { servings: Math.max(1, entry.servings - 1) } })}
-                                      className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100"
-                                    >-</button>
-                                    <span className="text-[10px] text-gray-600 px-0.5">{entry.servings}</span>
-                                    <button
-                                      onClick={() => updateEntry({ id: entry.id, data: { servings: entry.servings + 1 } })}
-                                      className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100"
-                                    >+</button>
+                                {date >= todayStr ? (
+                                  <div className="flex items-center justify-between mt-0.5">
+                                    <div className="flex items-center gap-0.5">
+                                      <button
+                                        onClick={() => updateEntry({ id: entry.id, data: { servings: Math.max(1, entry.servings - 1) } })}
+                                        className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100"
+                                      >-</button>
+                                      <span className="text-[10px] text-gray-600 px-0.5">{entry.servings}</span>
+                                      <button
+                                        onClick={() => updateEntry({ id: entry.id, data: { servings: entry.servings + 1 } })}
+                                        className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100"
+                                      >+</button>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })}
+                                        className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap recipe"
+                                      >🔄</button>
+                                      <button
+                                        onClick={() => deleteEntry(entry.id)}
+                                        className="text-[10px] text-red-400 hover:text-red-600 px-0.5"
+                                      >✕</button>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })}
-                                      className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap recipe"
-                                    >🔄</button>
-                                    <button
-                                      onClick={() => deleteEntry(entry.id)}
-                                      className="text-[10px] text-red-400 hover:text-red-600 px-0.5"
-                                    >✕</button>
+                                ) : (
+                                  <div className="flex items-center justify-between mt-0.5">
+                                    <span className="text-[9px] text-gray-400">{entry.servings}sv • done</span>
+                                    {!(entry as any).isLeftover && (
+                                      <button
+                                        onClick={() => updateEntry({ id: entry.id, data: { isLeftover: true } as any })}
+                                        className="text-[9px] text-amber-600 hover:text-amber-700 font-medium"
+                                      >🍱 leftover</button>
+                                    )}
                                   </div>
-                                </div>
+                                )}
                               </div>
                             ))
                           )}
