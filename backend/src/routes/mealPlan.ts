@@ -43,12 +43,14 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { recipeId, planDate, mealSlot, servings } = req.body;
+    const { recipeId, planDate, mealSlot, servings, isLeftover, leftoverExpiryDate } = req.body;
     const entry = await prisma.mealPlanEntry.update({
       where: { id: req.params.id },
       data: {
         ...(recipeId && { recipeId }), ...(planDate && { planDate: new Date(planDate) }),
         ...(mealSlot && { mealSlot }), ...(servings && { servings }),
+        ...(isLeftover !== undefined && { isLeftover }),
+        ...(leftoverExpiryDate !== undefined && { leftoverExpiryDate: leftoverExpiryDate ? new Date(leftoverExpiryDate) : new Date(Date.now() + 86400000) }),
       },
       include: { recipe: { include: { ingredients: true } } },
     });

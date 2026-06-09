@@ -219,7 +219,9 @@ export default function MealPlanPage() {
                                         🍱
                                       </button>
                                     )}
-                                    <button onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })} className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap">🔄</button>
+                                    {!canBeLeftover && (
+                                      <button onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })} className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap">🔄</button>
+                                    )}
                                     <button onClick={() => deleteEntry(entry.id)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5">✕</button>
                                   </div>
                                 </div>
