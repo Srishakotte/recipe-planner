@@ -7,7 +7,8 @@ const router = Router();
 async function callGemini(prompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-    return JSON.stringify({ error: 'Gemini API key not configured' });
+    console.log('No Gemini API key, using fallback');
+    return '';
   }
 
   try {
@@ -20,10 +21,42 @@ async function callGemini(prompt: string): Promise<string> {
       }),
     });
     const data: any = await res.json();
-    return data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify({ error: 'No response' });
+    if (data?.error) {
+      console.error('Gemini error:', JSON.stringify(data.error));
+      return '';
+    }
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   } catch (error: any) {
-    return JSON.stringify({ error: error.message });
+    console.error('Gemini fetch error:', error.message);
+    return '';
   }
+}
+
+// Fallback: generate suggestions from pantry without AI
+function generateFallbackRecipes(pantryItems: { name: string; quantity: number; unit: string }[]): any[] {
+  const names = pantryItems.map(p => p.name.toLowerCase());
+  const suggestions = [];
+
+  if (names.includes('rice') && names.includes('onion')) {
+    suggestions.push({ name: 'Garlic Fried Rice', cookingTime: 15, calories: 380, protein: 8, difficulty: 'easy', ingredientsUsed: ['rice', 'onion', 'garlic'] });
+  }
+  if (names.includes('flour') && names.includes('sugar')) {
+    suggestions.push({ name: 'Simple Pancakes', cookingTime: 20, calories: 420, protein: 10, difficulty: 'easy', ingredientsUsed: ['flour', 'sugar', 'milk'] });
+  }
+  if (names.includes('onion') && names.includes('garlic')) {
+    suggestions.push({ name: 'Onion Soup', cookingTime: 30, calories: 180, protein: 5, difficulty: 'easy', ingredientsUsed: ['onion', 'garlic', 'olive oil'] });
+  }
+  if (names.includes('olive oil') && names.includes('garlic')) {
+    suggestions.push({ name: 'Aglio e Olio Pasta', cookingTime: 15, calories: 450, protein: 12, difficulty: 'easy', ingredientsUsed: ['olive oil', 'garlic'] });
+  }
+  if (names.includes('rice') && names.includes('soy sauce')) {
+    suggestions.push({ name: 'Soy Sauce Rice Bowl', cookingTime: 10, calories: 320, protein: 6, difficulty: 'easy', ingredientsUsed: ['rice', 'soy sauce', 'garlic'] });
+  }
+  if (suggestions.length === 0) {
+    suggestions.push({ name: 'Simple Salad', cookingTime: 10, calories: 150, protein: 3, difficulty: 'easy', ingredientsUsed: pantryItems.slice(0, 3).map(p => p.name) });
+  }
+
+  return suggestions.slice(0, 3);
 }
 
 // POST /api/ai/suggest-recipes
@@ -32,15 +65,28 @@ router.post('/suggest-recipes', async (req: Request, res: Response) => {
     const pantryItems = await prisma.pantryItem.findMany();
     const ingredients = pantryItems.map(p => `${p.name} (${p.quantity} ${p.unit})`).join(', ');
 
-    const prompt = `I have these ingredients: ${ingredients}. Suggest 3 quick recipes. Return ONLY JSON array: [{"name":"...","cookingTime":15,"calories":350,"protein":12,"difficulty":"easy","ingredientsUsed":["rice","onion"]}]`;
+    const prompt = `I have these ingredients: ${ingredients}. Suggest 3 quick recipes I can make. Return ONLY a JSON array with no other text: [{"name":"...","cookingTime":15,"calories":350,"protein":12,"difficulty":"easy","ingredientsUsed":["rice","onion"]}]`;
 
     const response = await callGemini(prompt);
-    try {
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      const recipes = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
-      res.json({ suggestions: recipes, source: 'ai' });
-    } catch { res.json({ suggestions: [], source: 'fallback' }); }
-  } catch (error) { res.status(500).json({ error: 'Failed' }); }
+
+    if (response) {
+      try {
+        const jsonMatch = response.match(/\[[\s\S]*\]/);
+        const recipes = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+        if (recipes.length > 0) {
+          res.json({ suggestions: recipes, source: 'gemini' });
+          return;
+        }
+      } catch (e) { console.error('Parse error:', e); }
+    }
+
+    // Fallback - use hardcoded logic
+    const fallback = generateFallbackRecipes(pantryItems.map(p => ({ name: p.name, quantity: p.quantity, unit: p.unit })));
+    res.json({ suggestions: fallback, source: 'fallback' });
+  } catch (error) {
+    console.error('suggest-recipes error:', error);
+    res.status(500).json({ error: 'Failed' });
+  }
 });
 
 // POST /api/ai/estimate-nutrition
