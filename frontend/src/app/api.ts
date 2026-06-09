@@ -209,6 +209,20 @@ export const api = createApi({
       invalidatesTags: ['Constraints', 'GroceryList'],
     }),
 
+    // Synonyms
+    getSynonyms: builder.query<{ id: string; synonym: string; canonicalName: string }[], void>({
+      query: () => '/substitutions/synonyms',
+      providesTags: ['Substitutions'],
+    }),
+    createSynonym: builder.mutation<any, { synonym: string; canonicalName: string }>({
+      query: (body) => ({ url: '/substitutions/synonyms', method: 'POST', body }),
+      invalidatesTags: ['Substitutions'],
+    }),
+    deleteSynonym: builder.mutation<void, string>({
+      query: (id) => ({ url: `/substitutions/synonyms/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Substitutions'],
+    }),
+
     // AI Endpoints
     aiSuggestRecipes: builder.mutation<{ suggestions: any[]; source: string }, void>({
       query: () => ({ url: '/ai/suggest-recipes', method: 'POST' }),
@@ -260,4 +274,7 @@ export const {
   useAiEstimateCostMutation,
   useAiSuggestSubstitutionMutation,
   useAiWeeklyPlanMutation,
+  useGetSynonymsQuery,
+  useCreateSynonymMutation,
+  useDeleteSynonymMutation,
 } = api;

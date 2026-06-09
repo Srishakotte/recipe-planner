@@ -45,4 +45,26 @@ router.delete('/constraints/:id', async (req: Request, res: Response) => {
   catch (error) { res.status(500).json({ error: 'Failed to delete constraint' }); }
 });
 
+// === Synonyms ===
+router.get('/synonyms', async (req: Request, res: Response) => {
+  try { res.json(await prisma.ingredientSynonym.findMany()); }
+  catch (error) { res.status(500).json({ error: 'Failed to fetch synonyms' }); }
+});
+
+router.post('/synonyms', async (req: Request, res: Response) => {
+  try {
+    const { synonym, canonicalName } = req.body;
+    if (!synonym || !canonicalName) { res.status(400).json({ error: 'synonym and canonicalName required' }); return; }
+    const entry = await prisma.ingredientSynonym.create({
+      data: { synonym: synonym.toLowerCase().trim(), canonicalName: canonicalName.toLowerCase().trim() },
+    });
+    res.status(201).json(entry);
+  } catch (error) { res.status(500).json({ error: 'Failed to create synonym' }); }
+});
+
+router.delete('/synonyms/:id', async (req: Request, res: Response) => {
+  try { await prisma.ingredientSynonym.delete({ where: { id: req.params.id } }); res.json({ message: 'Synonym deleted' }); }
+  catch (error) { res.status(500).json({ error: 'Failed to delete synonym' }); }
+});
+
 export default router;

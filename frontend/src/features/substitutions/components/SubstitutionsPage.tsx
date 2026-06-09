@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   useGetSubstitutionsQuery,
   useCreateSubstitutionMutation,
@@ -6,6 +6,9 @@ import {
   useGetConstraintsQuery,
   useCreateConstraintMutation,
   useDeleteConstraintMutation,
+  useGetSynonymsQuery,
+  useCreateSynonymMutation,
+  useDeleteSynonymMutation,
 } from '../../../app/api';
 
 const constraintTypes = ['dietary', 'allergen', 'preference'];
@@ -36,10 +39,16 @@ export default function SubstitutionsPage() {
 
   const { data: substitutions, isLoading: subsLoading } = useGetSubstitutionsQuery();
   const { data: constraints } = useGetConstraintsQuery();
+  const { data: synonyms = [] } = useGetSynonymsQuery();
   const [createSubstitution] = useCreateSubstitutionMutation();
   const [deleteSubstitution] = useDeleteSubstitutionMutation();
   const [createConstraint] = useCreateConstraintMutation();
   const [deleteConstraint] = useDeleteConstraintMutation();
+  const [createSynonym] = useCreateSynonymMutation();
+  const [deleteSynonym] = useDeleteSynonymMutation();
+  const [showSynonymForm, setShowSynonymForm] = useState(false);
+  const [synSynonym, setSynSynonym] = useState('');
+  const [synCanonical, setSynCanonical] = useState('');
 
   const handleCreateSub = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,6 +280,54 @@ export default function SubstitutionsPage() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+      {/* Ingredient Synonyms */}
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">📝 Ingredient Synonyms</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Map different names to the same ingredient (e.g. scallion = green onion)</p>
+          </div>
+          <button onClick={() => setShowSynonymForm(!showSynonymForm)} className="text-xs text-green-600 font-semibold">+ Add Synonym</button>
+        </div>
+
+        {showSynonymForm && (
+          <div className="p-5 bg-gray-50 border-b border-gray-100 flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="text-[10px] font-medium text-gray-500 block mb-1">Synonym (what user might type)</label>
+              <input type="text" value={synSynonym} onChange={(e) => setSynSynonym(e.target.value)}
+                placeholder="e.g. scallion, lady finger, dahi" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] font-medium text-gray-500 block mb-1">Canonical name (standard name)</label>
+              <input type="text" value={synCanonical} onChange={(e) => setSynCanonical(e.target.value)}
+                placeholder="e.g. green onion, okra, yogurt" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+            </div>
+            <button
+              onClick={async () => {
+                if (synSynonym && synCanonical) {
+                  await createSynonym({ synonym: synSynonym, canonicalName: synCanonical });
+                  setSynSynonym(''); setSynCanonical(''); setShowSynonymForm(false);
+                }
+              }}
+              className="px-4 py-2.5 bg-green-600 text-white text-sm rounded-xl font-semibold whitespace-nowrap">Add</button>
+          </div>
+        )}
+
+        {synonyms.length === 0 ? (
+          <div className="p-6 text-center text-gray-400 text-sm">No synonyms yet. Add some to help the engine merge ingredients correctly.</div>
+        ) : (
+          <div className="p-4 flex flex-wrap gap-2">
+            {synonyms.map((s: any) => (
+              <div key={s.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-xl group">
+                <span className="text-xs text-gray-700">{s.synonym}</span>
+                <span className="text-xs text-gray-400">=</span>
+                <span className="text-xs font-medium text-blue-700">{s.canonicalName}</span>
+                <button onClick={() => deleteSynonym(s.id)} className="text-red-400 hover:text-red-600 ml-1 opacity-0 group-hover:opacity-100 transition-opacity text-sm">×</button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
