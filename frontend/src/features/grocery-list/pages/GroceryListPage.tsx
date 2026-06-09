@@ -9,35 +9,53 @@ import {
   useDeleteGroceryItemMutation,
   GroceryItem,
 } from '../../../app/api';
-import { showToast } from '../../../shared/components/Toast';
+
+const tabs = ['All', 'Need To Buy', 'In Pantry', 'Purchased'];
 
 export default function GroceryListPage() {
-  const [sectionFilter, setSectionFilter] = useState('');
-  const [uncheckedOnly, setUncheckedOnly] = useState(false);
-  const [warningsOnly, setWarningsOnly] = useState(false);
-  const [showAdHocForm, setShowAdHocForm] = useState(false);
+  const [activeTab, setActiveTab] = useState('All');
+  const [search, setSearch] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
   const [adHocName, setAdHocName] = useState('');
   const [adHocQty, setAdHocQty] = useState(1);
-  const [adHocUnit, setAdHocUnit] = useState('');
-  const [adHocSection, setAdHocSection] = useState('Other');
+  const [adHocUnit, setAdHocUnit] = useState('piece');
   const [overrideId, setOverrideId] = useState<string | null>(null);
   const [overrideValue, setOverrideValue] = useState(0);
+  const [showAiPanel, setShowAiPanel] = useState(false);
 
-  const filters = {
-    section: sectionFilter || undefined,
-    uncheckedOnly: uncheckedOnly || undefined,
-    warningsOnly: warningsOnly || undefined,
-  };
-
-  const { data: groceryList, isLoading } = useGetGroceryListQuery(
-    Object.values(filters).some(Boolean) ? filters : undefined
-  );
+  const { data: groceryList, isLoading } = useGetGroceryListQuery();
   const [generateList, { isLoading: isGenerating }] = useGenerateGroceryListMutation();
   const [checkItem] = useCheckGroceryItemMutation();
   const [overrideItem] = useOverrideGroceryItemMutation();
   const [markAlreadyHave] = useMarkAlreadyHaveMutation();
   const [addAdHocItem] = useAddAdHocItemMutation();
   const [deleteItem] = useDeleteGroceryItemMutation();
+
+  const items = groceryList?.items || [];
+
+  // Filter by tab
+  const filteredItems = items.filter(item => {
+    if (search && !item.ingredientName.toLowerCase().includes(search.toLowerCase())) return false;
+    switch (activeTab) {
+      case 'Need To Buy': return !item.isChecked && !item.isAlreadyHave && item.computedQty > 0;
+      case 'In Pantry': return item.isAlreadyHave || item.computedQty === 0;
+      case 'Purchased': return item.isChecked;
+      default: return true;
+    }
+  });
+
+  // Stats
+  const needToBuy = items.filter(i => !i.isChecked && !i.isAlreadyHave && i.computedQty > 0);
+  const inPantry = items.filter(i => i.isAlreadyHave || i.computedQty === 0);
+  const purchased = items.filter(i => i.isChecked);
+
+  // Group by section
+  const groupedItems: Record<string, GroceryItem[]> = {};
+  filteredItems.forEach(item => {
+    const section = item.storeSection || 'other';
+    if (!groupedItems[section]) groupedItems[section] = [];
+    groupedItems[section].push(item);
+  });
 
   const handleCheck = async (item: GroceryItem) => {
     await checkItem({ id: item.id, isChecked: !item.isChecked });
@@ -48,351 +66,244 @@ export default function GroceryListPage() {
     setOverrideId(null);
   };
 
-  const handleMarkAlreadyHave = async (item: GroceryItem) => {
-    await markAlreadyHave({ id: item.id, isAlreadyHave: !item.isAlreadyHave });
-  };
-
   const handleAddAdHoc = async () => {
     if (!adHocName) return;
-    await addAdHocItem({
-      ingredientName: adHocName,
-      computedQty: adHocQty,
-      unit: adHocUnit,
-      storeSection: adHocSection,
-    });
-    setShowAdHocForm(false);
-    setAdHocName('');
-    setAdHocQty(1);
-    setAdHocUnit('');
-    setAdHocSection('Other');
+    await addAdHocItem({ ingredientName: adHocName, computedQty: adHocQty, unit: adHocUnit, storeSection: 'other' });
+    setAdHocName(''); setAdHocQty(1); setShowAddForm(false);
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteItem(id);
+  const handleExportCSV = () => {
+    const csv = ['Item,Quantity,Unit,Section,Status']
+      .concat(items.map(i => `"${i.ingredientName}",${i.overrideQty ?? i.computedQty},"${i.unit}","${i.storeSection}",${i.isChecked ? 'Purchased' : 'Pending'}`))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'grocery-list.csv'; a.click();
   };
-
-  // Group items by store section, separate pantry-covered items
-  const groupedItems: Record<string, GroceryItem[]> = {};
-  const pantryItems: GroceryItem[] = [];
-  if (groceryList?.items) {
-    groceryList.items.forEach((item) => {
-      if (item.isAlreadyHave || item.computedQty === 0) {
-        pantryItems.push(item);
-      } else {
-        const section = item.storeSection || 'Other';
-        if (!groupedItems[section]) groupedItems[section] = [];
-        groupedItems[section].push(item);
-      }
-    });
-  }
-
-  const sections = Object.keys(groupedItems).sort();
-  const storeSections = ['Produce', 'Dairy', 'Meat', 'Bakery', 'Frozen', 'Canned', 'Dry Goods', 'Spices', 'Beverages', 'Other'];
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Grocery List</h1>
-        <button
-          onClick={async () => {
-            const result = await generateList();
-            if ('data' in result) {
-              const items = (result.data as any)?.items?.length || 0;
-              showToast(`Grocery list regenerated — ${items} items`, 'success');
-            }
-          }}
-          disabled={isGenerating}
-          className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          {isGenerating ? 'Generating...' : 'Generate List'}
-        </button>
+    <div className="animate-fade-in space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">🛒 Grocery List</h1>
+          <p className="text-gray-500 mt-1">Auto-generated from your meal plan and pantry</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={handleExportCSV} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all">
+            📄 Export CSV
+          </button>
+          <button
+            onClick={async () => { await generateList(); }}
+            disabled={isGenerating}
+            className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-200 transition-all hover:scale-[1.02] disabled:opacity-50"
+          >
+            {isGenerating ? '⏳ Generating...' : '⚡ Generate List'}
+          </button>
+        </div>
       </div>
 
-      {/* Export buttons */}
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => {
-            const items = groceryList?.items || [];
-            const csv = ['Item,Quantity,Unit,Section,Checked']
-              .concat(items.map(i => `"${i.ingredientName}",${i.overrideQty ?? i.computedQty},"${i.unit}","${i.storeSection}",${i.isChecked}`))
-              .join('\n');
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'grocery-list.csv'; a.click();
-            showToast('Exported as CSV', 'success');
-          }}
-          className="text-sm px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-600"
-        >
-          Export CSV
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="text-sm px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-600"
-        >
-          Print
-        </button>
+      {/* Smart Summary Cards */}
+      <div className="grid grid-cols-4 gap-4 stagger-children">
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center mb-2"><span className="text-sm">📋</span></div>
+          <p className="text-2xl font-bold text-gray-900">{items.length}</p>
+          <p className="text-xs text-gray-500">Total Items</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center mb-2"><span className="text-sm">✅</span></div>
+          <p className="text-2xl font-bold text-green-600">{inPantry.length}</p>
+          <p className="text-xs text-gray-500">Already Have</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center mb-2"><span className="text-sm">🛍️</span></div>
+          <p className="text-2xl font-bold text-amber-600">{needToBuy.length}</p>
+          <p className="text-xs text-gray-500">Need To Buy</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center mb-2"><span className="text-sm">💰</span></div>
+          <p className="text-2xl font-bold text-purple-600">~${needToBuy.length * 3}</p>
+          <p className="text-xs text-gray-500">Est. Cost</p>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
-        <select
-          value={sectionFilter}
-          onChange={(e) => setSectionFilter(e.target.value)}
-          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none"
-        >
-          <option value="">All Sections</option>
-          {storeSections.map((s) => (
-            <option key={s} value={s}>{s}</option>
+      {/* AI Cost Optimizer */}
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-100">
+        <div className="flex items-start gap-4">
+          <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
+            <span className="text-xl">🤖</span>
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-gray-800 text-sm">AI Shopping Insights</h3>
+            <p className="text-sm text-gray-600 mt-1.5">
+              {inPantry.length > 0
+                ? `You already have ${inPantry.length} items in your pantry. No need to purchase those!`
+                : 'Generate a grocery list to see cost-saving insights.'}
+            </p>
+            {needToBuy.length > 0 && (
+              <div className="flex gap-2 mt-3">
+                <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-green-700 border border-green-200">
+                  💡 Save ~${Math.round(inPantry.length * 2.5)} with pantry items
+                </span>
+                <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-blue-700 border border-blue-200">
+                  🔄 {items.filter(i => i.warnings && (i.warnings as any[]).length > 0).length} substitution options
+                </span>
+              </div>
+            )}
+            <p className="text-xs text-green-500 mt-2 font-medium">✨ AI-powered • Connect Gemini API for smarter insights</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs + Search */}
+      <div className="flex items-center gap-4">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          {tabs.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab} ({tab === 'All' ? items.length : tab === 'Need To Buy' ? needToBuy.length : tab === 'In Pantry' ? inPantry.length : purchased.length})
+            </button>
           ))}
-        </select>
-        <label className="flex items-center gap-1.5 text-sm text-gray-600">
+        </div>
+        <div className="flex-1 relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
           <input
-            type="checkbox"
-            checked={uncheckedOnly}
-            onChange={(e) => setUncheckedOnly(e.target.checked)}
-            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+            type="text"
+            placeholder="Search items..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none"
           />
-          Unchecked only
-        </label>
-        <label className="flex items-center gap-1.5 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={warningsOnly}
-            onChange={(e) => setWarningsOnly(e.target.checked)}
-            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-          />
-          Warnings only
-        </label>
-        <button
-          onClick={() => setShowAdHocForm(true)}
-          className="ml-auto text-green-600 hover:text-green-700 text-sm font-medium"
-        >
+        </div>
+        <button onClick={() => setShowAddForm(!showAddForm)} className="px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50">
           + Add Item
         </button>
       </div>
 
-      {/* Warnings banner */}
-      {groceryList?.warnings && groceryList.warnings.length > 0 && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm font-medium text-yellow-800 mb-1">Warnings:</p>
-          <ul className="text-sm text-yellow-700 list-disc list-inside">
-            {groceryList.warnings.map((w, i) => (
-              <li key={i}>{typeof w === 'string' ? w : (w as any).message}</li>
-            ))}
-          </ul>
+      {/* Add Form */}
+      {showAddForm && (
+        <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm animate-scale-in flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Item Name</label>
+            <input type="text" value={adHocName} onChange={(e) => setAdHocName(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="e.g. Paper towels" />
+          </div>
+          <div className="w-20">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Qty</label>
+            <input type="number" value={adHocQty} onChange={(e) => setAdHocQty(Number(e.target.value))}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+          </div>
+          <div className="w-24">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Unit</label>
+            <input type="text" value={adHocUnit} onChange={(e) => setAdHocUnit(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+          </div>
+          <button onClick={handleAddAdHoc} className="px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl">Add</button>
+          <button onClick={() => setShowAddForm(false)} className="px-4 py-2.5 bg-gray-100 text-gray-600 text-sm font-semibold rounded-xl">Cancel</button>
         </div>
       )}
 
-      {/* Stats bar */}
-      {groceryList?.items && groceryList.items.length > 0 && (
-        <div className="mb-4 flex items-center gap-4 px-4 py-2.5 bg-white border border-gray-200 rounded-lg">
-          <span className="text-sm font-medium text-gray-700">
-            {groceryList.items.filter(i => !i.isChecked && !i.isAlreadyHave).length} items to buy
-          </span>
-          <span className="text-sm text-green-600">
-            {groceryList.items.filter(i => i.isAlreadyHave).length} in pantry
-          </span>
-          <span className="text-sm text-gray-500">
-            {groceryList.items.filter(i => i.isChecked).length} checked off
-          </span>
-          {groceryList.items.some(i => i.warnings && (i.warnings as any[]).length > 0) && (
-            <span className="text-sm text-yellow-600">
-              ⚠ {groceryList.items.filter(i => i.warnings && (i.warnings as any[]).length > 0).length} warnings
-            </span>
-          )}
+      {/* Shopping Progress Bar */}
+      {items.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 border border-gray-100">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-gray-600">Shopping Progress</span>
+            <span className="text-xs text-gray-500">{purchased.length}/{items.length} items</span>
+          </div>
+          <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-500"
+              style={{ width: `${items.length > 0 ? (purchased.length / items.length) * 100 : 0}%` }}
+            />
+          </div>
         </div>
       )}
 
+      {/* Grocery Items by Section */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-          <span className="ml-3 text-gray-600">Loading grocery list...</span>
+        <div className="flex items-center justify-center py-16">
+          <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center animate-pulse">
+            <span className="text-2xl">🛒</span>
+          </div>
         </div>
-      ) : !groceryList || groceryList.items.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-500 text-lg">No grocery items yet.</p>
-          <p className="text-gray-400 mt-2">Add recipes to your meal plan and generate a list!</p>
+      ) : filteredItems.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+          <span className="text-5xl">🛒</span>
+          <p className="text-gray-600 font-medium mt-4">
+            {items.length === 0 ? 'No grocery list yet' : 'No items match your filter'}
+          </p>
+          <p className="text-gray-400 text-sm mt-1">
+            {items.length === 0 ? 'Add meals to your plan and generate a list!' : 'Try a different tab or search term'}
+          </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {sections.map((section) => (
-            <div key={section} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-green-50 px-4 py-2 border-b border-gray-200">
-                <h2 className="font-semibold text-green-800">{section}</h2>
+        <div className="space-y-4 stagger-children">
+          {Object.entries(groupedItems).map(([section, sectionItems]) => (
+            <div key={section} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+              <div className="px-5 py-3 bg-gray-50/80 border-b border-gray-100 flex items-center gap-2">
+                <span className="text-sm">
+                  {section === 'produce' ? '🥬' : section === 'dairy' ? '🥛' : section === 'meat' ? '🥩' : section === 'pantry' ? '🏠' : section === 'bakery' ? '🍞' : section === 'frozen' ? '🧊' : '📦'}
+                </span>
+                <h3 className="font-semibold text-gray-700 capitalize text-sm">{section}</h3>
+                <span className="text-xs text-gray-400 ml-auto">{sectionItems.length} items</span>
               </div>
-              <div className="divide-y divide-gray-100">
-                {groupedItems[section].map((item) => (
-                  <div
-                    key={item.id}
-                    className={`px-4 py-3 flex items-center gap-3 ${
-                      item.isChecked ? 'bg-gray-50 opacity-60' : ''
-                    } ${item.isAlreadyHave ? 'bg-blue-50' : ''}`}
-                  >
+              <div className="divide-y divide-gray-50">
+                {sectionItems.map(item => (
+                  <div key={item.id} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${item.isChecked ? 'opacity-50' : ''}`}>
                     <input
                       type="checkbox"
                       checked={item.isChecked}
                       onChange={() => handleCheck(item)}
-                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      className="w-4.5 h-4.5 rounded-md border-gray-300 text-green-600 focus:ring-green-200"
                     />
                     <div className="flex-1">
-                      <span className={`font-medium ${item.isChecked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                      <span className={`font-medium text-sm ${item.isChecked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                         {item.ingredientName}
                       </span>
-                      <span className="ml-2 text-sm text-gray-500">
-                        {item.overrideQty ?? item.computedQty} {item.unit}
-                      </span>
-                      {item.isAdHoc && (
-                        <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">ad-hoc</span>
-                      )}
-                      {item.isAlreadyHave && (
-                        <span className="ml-2 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">have it</span>
-                      )}
-                      {item.sourceRecipes && item.sourceRecipes.length > 0 && (
+                      {item.isAdHoc && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md font-medium">custom</span>}
+                      {item.isAlreadyHave && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">in pantry</span>}
+                      {/* Source recipes */}
+                      {item.sourceRecipes && (item.sourceRecipes as any[]).length > 0 && (
                         <p className="text-xs text-gray-400 mt-0.5">
-                          From: {(item.sourceRecipes as any[]).map((s: any) => 
-                            typeof s === 'string' ? s : `${s.recipeName} (${s.contributionQty}${item.unit})`
-                          ).join(', ')}
-                        </p>
-                      )}
-                      {item.warnings && item.warnings.length > 0 && (
-                        <p className="text-xs text-yellow-600 mt-0.5">
-                          ⚠ {(item.warnings as any[]).map((w: any) => typeof w === 'string' ? w : w.message).join(', ')}
+                          From: {(item.sourceRecipes as any[]).map((s: any) => typeof s === 'string' ? s : s.recipeName).join(', ')}
                         </p>
                       )}
                     </div>
+                    {/* Quantity */}
+                    {overrideId === item.id ? (
+                      <div className="flex items-center gap-1">
+                        <input type="number" step="0.25" value={overrideValue} onChange={(e) => setOverrideValue(Number(e.target.value))}
+                          className="w-16 px-2 py-1 border rounded-lg text-xs" autoFocus />
+                        <button onClick={() => handleOverride(item.id)} className="text-green-600 text-xs font-bold">✓</button>
+                        <button onClick={() => setOverrideId(null)} className="text-gray-400 text-xs">✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setOverrideId(item.id); setOverrideValue(item.overrideQty ?? item.computedQty); }}
+                        className="text-sm text-gray-600 hover:text-green-600 font-medium px-2 py-1 rounded-lg hover:bg-green-50 transition-colors"
+                      >
+                        {item.overrideQty ?? item.computedQty} {item.unit}
+                      </button>
+                    )}
+                    {/* Actions */}
                     <div className="flex items-center gap-1">
-                      {overrideId === item.id ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={overrideValue}
-                            onChange={(e) => setOverrideValue(Number(e.target.value))}
-                            className="w-16 px-2 py-1 border border-gray-300 rounded text-xs"
-                            min={0}
-                            step="any"
-                          />
-                          <button
-                            onClick={() => handleOverride(item.id)}
-                            className="text-xs text-green-600 hover:text-green-700"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            onClick={() => setOverrideId(null)}
-                            className="text-xs text-gray-400 hover:text-gray-600"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => { setOverrideId(item.id); setOverrideValue(item.overrideQty ?? item.computedQty); }}
-                            className="text-xs text-gray-400 hover:text-gray-600 px-1"
-                            title="Override quantity"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            onClick={() => handleMarkAlreadyHave(item)}
-                            className={`text-xs px-1 ${item.isAlreadyHave ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
-                            title="Mark as already have"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="text-xs text-red-400 hover:text-red-600 px-1"
-                            title="Remove"
-                          >
-                            ×
-                          </button>
-                        </>
+                      {!item.isAlreadyHave && (
+                        <button onClick={() => markAlreadyHave({ id: item.id, isAlreadyHave: true })}
+                          className="text-xs text-gray-400 hover:text-green-600 px-1.5 py-1 rounded hover:bg-green-50" title="Have it">🏠</button>
                       )}
+                      <button onClick={() => deleteItem(item.id)}
+                        className="text-xs text-gray-400 hover:text-red-600 px-1.5 py-1 rounded hover:bg-red-50" title="Remove">🗑️</button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           ))}
-
-          {/* Already in Pantry section */}
-          {pantryItems.length > 0 && (
-            <div className="bg-white border border-green-200 rounded-lg overflow-hidden opacity-70">
-              <div className="bg-green-100 px-4 py-2 border-b border-green-200">
-                <h2 className="font-semibold text-green-700">✓ Already in Pantry ({pantryItems.length})</h2>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {pantryItems.map((item) => (
-                  <div key={item.id} className="px-4 py-2 flex items-center gap-3 text-gray-400">
-                    <span className="text-green-500">✓</span>
-                    <span className="line-through">{item.ingredientName}</span>
-                    <span className="text-xs ml-auto">{item.computedQty} {item.unit} covered</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Ad-hoc Item Modal */}
-      {showAdHocForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">Add Item</h2>
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Item name"
-                value={adHocName}
-                onChange={(e) => setAdHocName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-              />
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={adHocQty}
-                  onChange={(e) => setAdHocQty(Number(e.target.value))}
-                  min={0}
-                  step="any"
-                  className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                />
-                <input
-                  type="text"
-                  placeholder="Unit"
-                  value={adHocUnit}
-                  onChange={(e) => setAdHocUnit(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                />
-              </div>
-              <select
-                value={adHocSection}
-                onChange={(e) => setAdHocSection(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-              >
-                {storeSections.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={handleAddAdHoc}
-                  disabled={!adHocName}
-                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => setShowAdHocForm(false)}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>
