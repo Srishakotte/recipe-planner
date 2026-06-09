@@ -38,12 +38,13 @@ model Ingredient {
 }
 
 model MealPlanEntry {
-  id        String   @id @default(uuid())
-  recipeId  String
-  planDate  DateTime @db.Date
-  mealSlot  String   @default("dinner")
-  servings  Int
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  recipeId   String
+  planDate   DateTime @db.Date
+  mealSlot   String   @default("dinner")
+  servings   Int
+  isLeftover Boolean  @default(false)
+  createdAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)

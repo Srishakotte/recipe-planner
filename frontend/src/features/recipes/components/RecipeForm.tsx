@@ -106,6 +106,15 @@ export default function RecipeForm({ recipe, onClose }: RecipeFormProps) {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Steps / Instructions (optional)</label>
+            <textarea
+              rows={4}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none resize-none"
+              placeholder="1. Heat oil in a pan&#10;2. Add garlic and cook...&#10;3. Add rice and stir fry..."
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Default Servings</label>
             <input
               type="number"
@@ -160,13 +169,27 @@ export default function RecipeForm({ recipe, onClose }: RecipeFormProps) {
                       step="any"
                       className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
                     />
-                    <input
-                      type="text"
-                      placeholder="Unit"
+                    <select
                       value={ingredient.unit}
                       onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
                       className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                    />
+                    >
+                      <option value="">Unit</option>
+                      <option value="g">g</option>
+                      <option value="kg">kg</option>
+                      <option value="ml">ml</option>
+                      <option value="l">l</option>
+                      <option value="cup">cup</option>
+                      <option value="tbsp">tbsp</option>
+                      <option value="tsp">tsp</option>
+                      <option value="oz">oz</option>
+                      <option value="lb">lb</option>
+                      <option value="piece">piece</option>
+                      <option value="clove">clove</option>
+                      <option value="can">can</option>
+                      <option value="bunch">bunch</option>
+                      <option value="slice">slice</option>
+                    </select>
                     <select
                       value={ingredient.storeSection}
                       onChange={(e) => updateIngredient(index, 'storeSection', e.target.value)}

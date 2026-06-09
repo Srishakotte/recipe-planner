@@ -27,7 +27,7 @@ router.post('/', async (req: Request, res: Response) => {
     const recipe = await prisma.recipe.findUnique({ where: { id: recipeId } });
     if (!recipe) { res.status(404).json({ error: 'Recipe not found' }); return; }
     const entry = await prisma.mealPlanEntry.create({
-      data: { recipeId, planDate: new Date(planDate), mealSlot: mealSlot || 'dinner', servings: servings || recipe.defaultServings },
+      data: { recipeId, planDate: new Date(planDate), mealSlot: mealSlot || 'dinner', servings: servings || recipe.defaultServings, isLeftover: req.body.isLeftover || false },
       include: { recipe: { include: { ingredients: true } } },
     });
     res.status(201).json(entry);

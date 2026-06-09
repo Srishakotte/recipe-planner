@@ -5,7 +5,7 @@ import {
 } from './types';
 import { normalizeIngredientName, normalizeUnit } from './normalize';
 import { convertUnits, getUnitType } from './convert';
-import { scaleQuantity, roundQuantity } from './scale';
+import { scaleQuantity, roundQuantity, smartUnitDisplay } from './scale';
 
 export interface GenerationInput {
   mealPlanEntries: {
@@ -195,10 +195,11 @@ export function generateGroceryList(input: GenerationInput): GeneratedGroceryLis
     }
 
     const finalQty = Math.max(0, item.quantity - pantrySubtracted);
+    const smartDisplay = smartUnitDisplay(roundQuantity(finalQty, roundingStrategy), item.unit);
     return {
       ingredientName: item.ingredientName,
-      quantity: roundQuantity(finalQty, roundingStrategy),
-      unit: item.unit, storeSection: item.storeSection,
+      quantity: smartDisplay.quantity,
+      unit: smartDisplay.unit, storeSection: item.storeSection,
       sources: item.sources,
       warnings: allWarnings.filter(w => w.ingredientName === item.ingredientName),
       pantrySubtracted,

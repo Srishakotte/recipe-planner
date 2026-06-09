@@ -23,7 +23,9 @@ router.post('/generate', async (req: Request, res: Response) => {
     }
 
     const entries = await prisma.mealPlanEntry.findMany({ where, include: { recipe: { include: { ingredients: true } } } });
-    if (entries.length === 0) { res.json({ items: [], warnings: [], generatedAt: new Date().toISOString() }); return; }
+    // Filter out leftover entries — they don't need new groceries
+    const activeEntries = entries.filter(e => !(e as any).isLeftover);
+    if (activeEntries.length === 0) { res.json({ items: [], warnings: [], generatedAt: new Date().toISOString() }); return; }
 
     const [pantry, synonyms, conversions, densities, substitutions, constraints] = await Promise.all([
       prisma.pantryItem.findMany(), prisma.ingredientSynonym.findMany(),
@@ -35,7 +37,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     for (const s of synonyms) { synonymMap[s.synonym.toLowerCase()] = s.canonicalName.toLowerCase(); }
 
     const input: GenerationInput = {
-      mealPlanEntries: entries.map(e => ({
+      mealPlanEntries: activeEntries.map(e => ({
         recipeId: e.recipeId, recipeName: e.recipe.name, servings: e.servings,
         defaultServings: e.recipe.defaultServings,
         ingredients: e.recipe.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, storeSection: i.storeSection })),

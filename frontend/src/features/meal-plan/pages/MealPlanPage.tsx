@@ -300,19 +300,45 @@ export default function MealPlanPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Servings</label>
-                <input
-                  type="number"
-                  value={servings}
-                  onChange={(e) => setServings(Number(e.target.value))}
-                  min={1}
-                  className="w-24 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-200 focus:border-green-400 outline-none text-sm"
-                />
+              <div className="flex gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Servings</label>
+                  <input
+                    type="number"
+                    value={servings}
+                    onChange={(e) => setServings(Number(e.target.value))}
+                    min={1}
+                    className="w-24 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-200 focus:border-green-400 outline-none text-sm"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl cursor-pointer hover:bg-amber-100 transition-colors">
+                    <input type="checkbox" id="leftover-check" className="rounded border-amber-300 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-700">🍱 Leftover</span>
+                  </label>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs font-semibold text-gray-600 mb-2">⚠️ Active Dietary Constraints:</p>
+                <p className="text-xs text-gray-500">Substitutions will be auto-applied during grocery generation based on your active constraints (manage in Substitutions page)</p>
               </div>
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={handleAddEntry}
+                  onClick={() => {
+                    const isLeftover = (document.getElementById('leftover-check') as HTMLInputElement)?.checked || false;
+                    if (!showAddModal || !selectedRecipeId) return;
+                    const recipe = recipes.find(r => r.id === selectedRecipeId);
+                    addEntry({
+                      recipeId: selectedRecipeId,
+                      planDate: showAddModal.date,
+                      mealSlot: showAddModal.slot,
+                      servings: servings || recipe?.defaultServings || 2,
+                      isLeftover,
+                    } as any);
+                    setShowAddModal(null);
+                    setSelectedRecipeId('');
+                    setServings(2);
+                  }}
                   disabled={!selectedRecipeId}
                   className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-xl hover:shadow-lg disabled:opacity-50 transition-all text-sm"
                 >
