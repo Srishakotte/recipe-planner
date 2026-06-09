@@ -19,7 +19,7 @@ async function callGemini(prompt: string): Promise<string> {
         generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
       }),
     });
-    const data = await res.json();
+    const data: any = await res.json();
     return data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify({ error: 'No response' });
   } catch (error: any) {
     return JSON.stringify({ error: error.message });
