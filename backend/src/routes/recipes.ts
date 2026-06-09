@@ -75,6 +75,20 @@ router.put('/:id', async (req: Request, res: Response) => {
 
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    // Check if recipe is used in future meal plan entries
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const futureEntries = await prisma.mealPlanEntry.findMany({
+      where: { recipeId: req.params.id, planDate: { gte: today } },
+    });
+    if (futureEntries.length > 0) {
+      res.status(409).json({
+        error: 'Cannot delete — recipe is used in upcoming meal plan',
+        usedInDays: futureEntries.length,
+        message: `This recipe is planned for ${futureEntries.length} upcoming meal(s). Remove it from the meal plan first.`,
+      });
+      return;
+    }
     await prisma.recipe.delete({ where: { id: req.params.id } });
     res.json({ message: 'Recipe deleted' });
   } catch (error) { res.status(500).json({ error: 'Failed to delete recipe' }); }
