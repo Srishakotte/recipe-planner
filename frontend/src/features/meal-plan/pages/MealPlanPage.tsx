@@ -34,6 +34,8 @@ export default function MealPlanPage() {
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
   const [showAddModal, setShowAddModal] = useState<{ date: string; slot: string } | null>(null);
   const [showSwapModal, setShowSwapModal] = useState<{ entryId: string; date: string; slot: string; currentServings: number } | null>(null);
+  const [showLeftoverModal, setShowLeftoverModal] = useState<{ entryId: string; recipeName: string } | null>(null);
+  const [leftoverExpiry, setLeftoverExpiry] = useState('');
   const [selectedRecipeId, setSelectedRecipeId] = useState('');
   const [servings, setServings] = useState(2);
   const [useLeftover, setUseLeftover] = useState(false);
@@ -215,7 +217,7 @@ export default function MealPlanPage() {
                                   </div>
                                   <div className="flex items-center gap-1">
                                     {canBeLeftover && (
-                                      <button onClick={() => handleToggleLeftover(entry)} className={`text-[9px] px-1 rounded ${(entry as any).isLeftover ? 'text-amber-600 font-bold' : 'text-gray-400 hover:text-amber-500'}`} title={`${(entry as any).isLeftover ? 'Unmark' : 'Mark as'} leftover`}>
+                                      <button onClick={() => setShowLeftoverModal({ entryId: entry.id, recipeName: entry.recipe?.name || 'Meal' })} className={`text-[9px] px-1 rounded ${(entry as any).isLeftover ? 'text-amber-600 font-bold' : 'text-gray-400 hover:text-amber-500'}`} title={`${(entry as any).isLeftover ? 'Unmark' : 'Mark as'} leftover`}>
                                         🍱
                                       </button>
                                     )}
@@ -301,6 +303,40 @@ export default function MealPlanPage() {
                 </button>
                 <button onClick={() => setShowAddModal(null)} className="px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 text-sm">Cancel</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leftover Modal */}
+      {showLeftoverModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowLeftoverModal(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">🍱 Mark as Leftover</h2>
+            <p className="text-sm text-gray-500 mb-4">"{showLeftoverModal.recipeName}" will be available as a leftover for future meals.</p>
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Expiry Date (leftover stays available until)</label>
+              <input
+                type="date"
+                value={leftoverExpiry}
+                onChange={(e) => setLeftoverExpiry(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none"
+              />
+              <p className="text-xs text-gray-400 mt-1">Default: tomorrow. After this date, leftover won't be shown as available.</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  const expiry = leftoverExpiry || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+                  await updateEntry({ id: showLeftoverModal.entryId, data: { isLeftover: true, leftoverExpiryDate: expiry } as any });
+                  setShowLeftoverModal(null);
+                  setLeftoverExpiry('');
+                }}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl hover:shadow-lg transition-all text-sm"
+              >
+                🍱 Mark as Leftover
+              </button>
+              <button onClick={() => setShowLeftoverModal(null)} className="px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl text-sm">Cancel</button>
             </div>
           </div>
         </div>
