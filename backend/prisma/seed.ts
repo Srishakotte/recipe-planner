@@ -48,6 +48,13 @@ async function main() {
       { synonym: 'whipping cream', canonicalName: 'cream' },
       { synonym: 'all-purpose flour', canonicalName: 'flour' },
       { synonym: 'plain flour', canonicalName: 'flour' },
+      { synonym: 'lady finger', canonicalName: 'okra' },
+      { synonym: 'ladyfinger', canonicalName: 'okra' },
+      { synonym: 'lady-finger', canonicalName: 'okra' },
+      { synonym: 'bhindi', canonicalName: 'okra' },
+      { synonym: 'curd', canonicalName: 'yogurt' },
+      { synonym: 'dahi', canonicalName: 'yogurt' },
+      { synonym: 'badam milk', canonicalName: 'almond milk' },
     ],
   });
 

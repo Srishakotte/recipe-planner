@@ -1,8 +1,23 @@
 import { SynonymMap } from './types';
 
+/**
+ * Resolves an ingredient name to its canonical form.
+ * Handles: case, extra spaces, hyphens (Lady finger = lady-finger = ladyfinger)
+ */
 export function normalizeIngredientName(name: string, synonymMap: SynonymMap): string {
-  const cleaned = name.toLowerCase().trim();
-  return synonymMap[cleaned] || cleaned;
+  // Clean: lowercase, trim, collapse spaces, normalize hyphens
+  const cleaned = name.toLowerCase().trim().replace(/\s+/g, ' ').replace(/-/g, ' ').trim();
+  
+  // Try exact match
+  if (synonymMap[cleaned]) return synonymMap[cleaned];
+  
+  // Try without spaces/hyphens (ladyfinger = lady finger)
+  const noSpaces = cleaned.replace(/\s/g, '');
+  for (const [key, value] of Object.entries(synonymMap)) {
+    if (key.replace(/\s/g, '').replace(/-/g, '') === noSpaces) return value;
+  }
+  
+  return cleaned;
 }
 
 export function normalizeUnit(unit: string): string {

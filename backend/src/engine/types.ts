@@ -59,6 +59,7 @@ export interface GrocerySourceRecipe {
 export interface GeneratedGroceryItem {
   ingredientName: string;
   quantity: number;
+  totalNeeded: number;
   unit: string;
   storeSection: string;
   sources: GrocerySourceRecipe[];

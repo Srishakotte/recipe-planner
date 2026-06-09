@@ -265,7 +265,7 @@ export default function GroceryListPage() {
                       <span className={`font-medium text-sm ${item.isChecked || item.computedQty === 0 ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                         {item.ingredientName}
                       </span>
-                      {item.computedQty === 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">✅ covered by pantry</span>}
+                      {item.computedQty === 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">✅ in pantry</span>}
                       {item.isAdHoc && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md font-medium">custom</span>}
                       {item.isAlreadyHave && item.computedQty > 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">have it</span>}
                       {/* Source recipes */}

@@ -199,6 +199,7 @@ export function generateGroceryList(input: GenerationInput): GeneratedGroceryLis
     return {
       ingredientName: item.ingredientName,
       quantity: smartDisplay.quantity,
+      totalNeeded: roundQuantity(item.quantity, roundingStrategy),
       unit: smartDisplay.unit, storeSection: item.storeSection,
       sources: item.sources,
       warnings: allWarnings.filter(w => w.ingredientName === item.ingredientName),
