@@ -202,12 +202,10 @@ export default function MealPlanPage() {
                           </div>
                           {slotEntries.length === 0 ? (
                             <div
-                              onClick={() => date >= todayStr ? setShowAddModal({ date, slot }) : null}
-                              className={`h-8 border border-dashed rounded-lg flex items-center justify-center ${
-                                date >= todayStr ? 'border-gray-200 cursor-pointer hover:border-green-300 hover:bg-green-50/30' : 'border-gray-100 bg-gray-50/30'
-                              } transition-all`}
+                              onClick={() => setShowAddModal({ date, slot })}
+                              className="h-8 border border-dashed border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-300 hover:bg-green-50/30 transition-all"
                             >
-                              <span className="text-[10px] text-gray-300">{date >= todayStr ? '+ add' : '—'}</span>
+                              <span className="text-[10px] text-gray-300">+ add</span>
                             </div>
                           ) : (
                             slotEntries.map(entry => (

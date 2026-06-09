@@ -73,8 +73,9 @@ export default function GroceryListPage() {
   };
 
   const handleExportCSV = () => {
-    const csv = ['Item,Quantity,Unit,Section,Status']
-      .concat(items.map(i => `"${i.ingredientName}",${i.overrideQty ?? i.computedQty},"${i.unit}","${i.storeSection}",${i.isChecked ? 'Purchased' : 'Pending'}`))
+    const buyItems = items.filter(i => i.computedQty > 0 && !i.isAlreadyHave);
+    const csv = ['Item,Quantity,Unit,Section']
+      .concat(buyItems.map(i => `"${i.ingredientName}",${i.overrideQty ?? i.computedQty},"${i.unit}","${i.storeSection}"`))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
