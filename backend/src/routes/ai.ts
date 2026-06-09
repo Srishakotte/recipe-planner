@@ -153,4 +153,42 @@ router.post('/weekly-plan', async (req: Request, res: Response) => {
   } catch (error) { res.status(500).json({ error: 'Failed' }); }
 });
 
+// GET /api/ai/debug-env - check if key is loaded
+router.get('/debug-env', (req: Request, res: Response) => {
+  const key = process.env.GEMINI_API_KEY;
+  res.json({
+    hasKey: !!key,
+    keyStart: key?.substring(0, 10) || 'none',
+    keyLength: key?.length || 0,
+  });
+});
+
+// GET /api/ai/test-gemini - test actual API call
+router.get('/test-gemini', async (req: Request, res: Response) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    res.status(400).json({ error: 'No GEMINI_API_KEY in .env' });
+    return;
+  }
+
+  try {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const result = await model.generateContent('Say hello in one word');
+    const text = result.response.text();
+    res.json({ success: true, text, keyStart: apiKey.substring(0, 10) });
+  } catch (error: any) {
+    console.error('TEST GEMINI FULL ERROR:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      errorType: error.constructor?.name,
+      statusCode: error.status || error.statusCode || null,
+      details: error.errorDetails || error.response?.data || null,
+      keyStart: apiKey.substring(0, 10),
+    });
+  }
+});
+
 export default router;
