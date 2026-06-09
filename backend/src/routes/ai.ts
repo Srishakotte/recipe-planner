@@ -3,7 +3,7 @@ import prisma from '../prisma';
 
 const router = Router();
 
-// Helper: call Gemini API
+// Helper: call Gemini API using official SDK
 async function callGemini(prompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your-gemini-api-key-here') {
@@ -12,25 +12,15 @@ async function callGemini(prompt: string): Promise<string> {
   }
 
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
-      }),
-    });
-    const data: any = await res.json();
-    if (data?.error) {
-      console.error('Gemini error:', JSON.stringify(data.error));
-      return '';
-    }
-    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    console.log('Gemini responded:', text.substring(0, 80));
+    return text;
   } catch (error: any) {
-    console.error('Gemini fetch error:', error.message);
+    console.error('Gemini SDK error:', error.message);
     return '';
   }
 }
