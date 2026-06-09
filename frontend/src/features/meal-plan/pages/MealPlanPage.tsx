@@ -210,7 +210,10 @@ export default function MealPlanPage() {
                           ) : (
                             slotEntries.map(entry => (
                               <div key={entry.id} className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-1.5 mb-1 group">
-                                <p className="text-[11px] font-semibold text-gray-800 truncate">{entry.recipe?.name}</p>
+                                <p className="text-[11px] font-semibold text-gray-800 truncate">
+                                  {(entry as any).isLeftover && <span className="text-amber-500 mr-0.5">🍱</span>}
+                                  {entry.recipe?.name}
+                                </p>
                                 <div className="flex items-center justify-between mt-0.5">
                                   <div className="flex items-center gap-0.5">
                                     <button
@@ -311,12 +314,38 @@ export default function MealPlanPage() {
                     className="w-24 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-200 focus:border-green-400 outline-none text-sm"
                   />
                 </div>
-                <div className="flex items-end">
+                <div className="flex items-end gap-2">
                   <label className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl cursor-pointer hover:bg-amber-100 transition-colors">
                     <input type="checkbox" id="leftover-check" className="rounded border-amber-300 text-amber-600" />
                     <span className="text-sm font-medium text-amber-700">🍱 Leftover</span>
                   </label>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-1">Expiry (optional)</label>
+                    <input type="date" id="leftover-expiry" className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-200 outline-none" />
+                  </div>
                 </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs font-semibold text-gray-600 mb-2">🍱 Available Leftovers:</p>
+                {entries.filter(e => (e as any).isLeftover).length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {entries.filter(e => (e as any).isLeftover).map(e => (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRecipeId(e.recipeId);
+                          setServings(e.servings);
+                        }}
+                        className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-200 transition-colors"
+                      >
+                        🍱 {e.recipe?.name} ({e.servings}sv)
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">No leftovers available. Mark a meal as leftover to reuse it.</p>
+                )}
               </div>
               <div className="bg-gray-50 rounded-xl p-3">
                 <p className="text-xs font-semibold text-gray-600 mb-2">⚠️ Active Dietary Constraints:</p>
@@ -326,6 +355,7 @@ export default function MealPlanPage() {
                 <button
                   onClick={() => {
                     const isLeftover = (document.getElementById('leftover-check') as HTMLInputElement)?.checked || false;
+                    const leftoverExpiry = (document.getElementById('leftover-expiry') as HTMLInputElement)?.value || null;
                     if (!showAddModal || !selectedRecipeId) return;
                     const recipe = recipes.find(r => r.id === selectedRecipeId);
                     addEntry({
@@ -334,6 +364,7 @@ export default function MealPlanPage() {
                       mealSlot: showAddModal.slot,
                       servings: servings || recipe?.defaultServings || 2,
                       isLeftover,
+                      leftoverExpiryDate: leftoverExpiry,
                     } as any);
                     setShowAddModal(null);
                     setSelectedRecipeId('');
