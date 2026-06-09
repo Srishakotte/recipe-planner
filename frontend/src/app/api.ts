@@ -208,6 +208,23 @@ export const api = createApi({
       query: (id) => ({ url: `/substitutions/constraints/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Constraints', 'GroceryList'],
     }),
+
+    // AI Endpoints
+    aiSuggestRecipes: builder.mutation<{ suggestions: any[]; source: string }, void>({
+      query: () => ({ url: '/ai/suggest-recipes', method: 'POST' }),
+    }),
+    aiEstimateNutrition: builder.mutation<{ nutrition: any; source: string }, { recipeName: string; ingredients?: any[] }>({
+      query: (body) => ({ url: '/ai/estimate-nutrition', method: 'POST', body }),
+    }),
+    aiEstimateCost: builder.mutation<{ totalCost: number; breakdown?: any[]; source: string }, void>({
+      query: () => ({ url: '/ai/estimate-cost', method: 'POST' }),
+    }),
+    aiSuggestSubstitution: builder.mutation<{ substitutions: any[]; source: string }, { ingredient: string }>({
+      query: (body) => ({ url: '/ai/suggest-substitution', method: 'POST', body }),
+    }),
+    aiWeeklyPlan: builder.mutation<{ plan: any[]; source: string }, void>({
+      query: () => ({ url: '/ai/weekly-plan', method: 'POST' }),
+    }),
   }),
 });
 
@@ -238,4 +255,9 @@ export const {
   useGetConstraintsQuery,
   useCreateConstraintMutation,
   useDeleteConstraintMutation,
+  useAiSuggestRecipesMutation,
+  useAiEstimateNutritionMutation,
+  useAiEstimateCostMutation,
+  useAiSuggestSubstitutionMutation,
+  useAiWeeklyPlanMutation,
 } = api;

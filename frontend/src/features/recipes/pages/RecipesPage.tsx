@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   useGetRecipesQuery,
   useDeleteRecipeMutation,
+  useAiSuggestRecipesMutation,
   Recipe,
 } from '../../../app/api';
 import RecipeForm from '../components/RecipeForm';
@@ -15,6 +16,9 @@ export default function RecipesPage() {
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [selectedType, setSelectedType] = useState('All');
   const [showAiGenerate, setShowAiGenerate] = useState(false);
+  const [aiRecipes, setAiRecipes] = useState<any[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestRecipes] = useAiSuggestRecipesMutation();
 
   const { data: recipes, isLoading } = useGetRecipesQuery(search || undefined);
   const [deleteRecipe] = useDeleteRecipeMutation();
@@ -49,7 +53,17 @@ export default function RecipesPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowAiGenerate(!showAiGenerate)}
+            onClick={async () => {
+              setShowAiGenerate(true);
+              setAiLoading(true);
+              try {
+                const result = await suggestRecipes();
+                if ('data' in result && result.data?.suggestions) {
+                  setAiRecipes(result.data.suggestions);
+                }
+              } catch (e) { console.error(e); }
+              setAiLoading(false);
+            }}
             className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-200 transition-all hover:scale-[1.02]"
           >
             🤖 Generate Recipe
@@ -72,25 +86,33 @@ export default function RecipesPage() {
             </div>
             <div className="flex-1">
               <h3 className="font-bold text-gray-800">Generate Recipe from Pantry</h3>
-              <p className="text-sm text-gray-600 mt-1">Based on what you have, AI suggests recipes you can make right now</p>
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
-                  <span className="text-2xl">🍳</span>
-                  <p className="font-medium text-sm mt-2 text-gray-800">Egg Fried Rice</p>
-                  <p className="text-xs text-gray-500 mt-1">⏱ 15 min • 🔥 380 kcal</p>
+              <p className="text-sm text-gray-600 mt-1">AI suggests recipes using your current pantry items</p>
+              {aiLoading ? (
+                <div className="mt-4 flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
+                  <span className="text-sm text-purple-600">AI is generating recipes...</span>
                 </div>
-                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
-                  <span className="text-2xl">🥗</span>
-                  <p className="font-medium text-sm mt-2 text-gray-800">Quick Veggie Stir Fry</p>
-                  <p className="text-xs text-gray-500 mt-1">⏱ 20 min • 🔥 290 kcal</p>
+              ) : aiRecipes.length > 0 ? (
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  {aiRecipes.slice(0, 3).map((recipe: any, i: number) => (
+                    <div key={i} className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
+                      <span className="text-2xl">{['🍳', '🥗', '🍲'][i % 3]}</span>
+                      <p className="font-medium text-sm mt-2 text-gray-800">{recipe.name}</p>
+                      <p className="text-xs text-gray-500 mt-1">⏱ {recipe.cookingTime || 20} min • 🔥 {recipe.calories || 350} kcal</p>
+                      {recipe.ingredientsUsed && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {recipe.ingredientsUsed.map((ing: string, j: number) => (
+                            <span key={j} className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md">✓ {ing}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
-                  <span className="text-2xl">🍲</span>
-                  <p className="font-medium text-sm mt-2 text-gray-800">Garlic Rice Bowl</p>
-                  <p className="text-xs text-gray-500 mt-1">⏱ 12 min • 🔥 320 kcal</p>
-                </div>
-              </div>
-              <p className="text-xs text-purple-500 mt-3 font-medium">✨ AI-powered • Based on your pantry items</p>
+              ) : (
+                <p className="mt-3 text-sm text-gray-400">Click "Generate Recipe" to get AI suggestions based on your pantry!</p>
+              )}
+              <p className="text-xs text-purple-500 mt-3 font-medium">✨ Powered by Gemini AI • Suggestions based on your pantry</p>
             </div>
           </div>
         </div>

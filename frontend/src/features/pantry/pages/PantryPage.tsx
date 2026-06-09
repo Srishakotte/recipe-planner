@@ -4,6 +4,7 @@ import {
   useAddPantryItemMutation,
   useUpdatePantryItemMutation,
   useDeletePantryItemMutation,
+  useAiSuggestRecipesMutation,
   PantryItem,
 } from '../../../app/api';
 
@@ -28,6 +29,9 @@ export default function PantryPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiRecipes, setAiRecipes] = useState<any[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestRecipes] = useAiSuggestRecipesMutation();
 
   const { data: items, isLoading } = useGetPantryQuery();
   const [addItem, { isLoading: isAdding }] = useAddPantryItemMutation();
@@ -80,7 +84,17 @@ export default function PantryPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowAiPanel(!showAiPanel)}
+            onClick={async () => {
+              setShowAiPanel(true);
+              setAiLoading(true);
+              try {
+                const result = await suggestRecipes();
+                if ('data' in result && result.data?.suggestions) {
+                  setAiRecipes(result.data.suggestions);
+                }
+              } catch (e) { console.error(e); }
+              setAiLoading(false);
+            }}
             className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-200 transition-all hover:scale-[1.02]"
           >
             🍳 What Can I Cook?
@@ -103,37 +117,35 @@ export default function PantryPage() {
             </div>
             <div className="flex-1">
               <h3 className="font-bold text-gray-800">What Can I Cook Right Now?</h3>
-              <p className="text-sm text-gray-600 mt-1">Based on your {filteredItems.length} pantry items, here's what you can make:</p>
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🍳</span>
-                    <div>
-                      <p className="font-medium text-sm text-gray-800">Garlic Rice</p>
-                      <p className="text-xs text-gray-500">⏱ 15 min • 🔥 350 kcal • 💪 8g protein</p>
-                    </div>
-                  </div>
+              <p className="text-sm text-gray-600 mt-1">Based on your {filteredItems.length} pantry items:</p>
+              {aiLoading ? (
+                <div className="mt-4 flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
+                  <span className="text-sm text-purple-600">AI is thinking...</span>
                 </div>
-                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🥗</span>
-                    <div>
-                      <p className="font-medium text-sm text-gray-800">Simple Onion Soup</p>
-                      <p className="text-xs text-gray-500">⏱ 25 min • 🔥 180 kcal • 💪 4g protein</p>
+              ) : aiRecipes.length > 0 ? (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {aiRecipes.slice(0, 3).map((recipe: any, i: number) => (
+                    <div key={i} className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{['🍳', '🥗', '🍲'][i % 3]}</span>
+                        <div>
+                          <p className="font-medium text-sm text-gray-800">{recipe.name}</p>
+                          <p className="text-xs text-gray-500">
+                            ⏱ {recipe.cookingTime || 20} min • 🔥 {recipe.calories || 350} kcal • 💪 {recipe.protein || 15}g
+                          </p>
+                          {recipe.ingredientsUsed && (
+                            <p className="text-[10px] text-purple-500 mt-1">Uses: {recipe.ingredientsUsed.join(', ')}</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🍝</span>
-                    <div>
-                      <p className="font-medium text-sm text-gray-800">Olive Oil Pasta</p>
-                      <p className="text-xs text-gray-500">⏱ 20 min • 🔥 420 kcal • 💪 12g protein</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <p className="text-xs text-purple-500 mt-3 font-medium">✨ AI-powered suggestions • Connect Gemini API to activate</p>
+              ) : (
+                <p className="mt-3 text-sm text-gray-400">Click the button to get AI suggestions!</p>
+              )}
+              <p className="text-xs text-purple-500 mt-3 font-medium">✨ Powered by Gemini AI</p>
             </div>
           </div>
         </div>
