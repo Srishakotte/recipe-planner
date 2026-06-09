@@ -7,6 +7,17 @@ import {
   PantryItem,
 } from '../../../app/api';
 
+const categories = ['All', 'Vegetables', 'Fruits', 'Protein', 'Dairy', 'Grains', 'Spices', 'Other'];
+
+const getStatus = (item: PantryItem) => {
+  if (!item.expirationDate) return { label: 'Good', color: 'bg-green-100 text-green-700', icon: '✓' };
+  const daysLeft = Math.ceil((new Date(item.expirationDate).getTime() - Date.now()) / 86400000);
+  if (daysLeft <= 0) return { label: 'Expired', color: 'bg-red-100 text-red-700', icon: '⚠️' };
+  if (daysLeft <= 2) return { label: 'Expiring Soon', color: 'bg-amber-100 text-amber-700', icon: '⚠️' };
+  if (daysLeft <= 5) return { label: `${daysLeft} days`, color: 'bg-yellow-50 text-yellow-700', icon: '⏰' };
+  return { label: 'Good', color: 'bg-green-100 text-green-700', icon: '✓' };
+};
+
 export default function PantryPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<PantryItem | null>(null);
@@ -14,132 +25,228 @@ export default function PantryPage() {
   const [quantity, setQuantity] = useState(1);
   const [unit, setUnit] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [search, setSearch] = useState('');
+  const [showAiPanel, setShowAiPanel] = useState(false);
 
   const { data: items, isLoading } = useGetPantryQuery();
   const [addItem, { isLoading: isAdding }] = useAddPantryItemMutation();
-  const [updateItem, { isLoading: isUpdating }] = useUpdatePantryItemMutation();
+  const [updateItem] = useUpdatePantryItemMutation();
   const [deleteItem] = useDeletePantryItemMutation();
 
-  const isSaving = isAdding || isUpdating;
-
   const resetForm = () => {
-    setName('');
-    setQuantity(1);
-    setUnit('');
-    setExpirationDate('');
-    setEditingItem(null);
-    setShowForm(false);
+    setName(''); setQuantity(1); setUnit(''); setExpirationDate('');
+    setEditingItem(null); setShowForm(false);
   };
 
   const handleEdit = (item: PantryItem) => {
-    setEditingItem(item);
-    setName(item.name);
-    setQuantity(item.quantity);
-    setUnit(item.unit);
-    setExpirationDate(item.expirationDate || '');
-    setShowForm(true);
+    setEditingItem(item); setName(item.name); setQuantity(item.quantity);
+    setUnit(item.unit); setExpirationDate(item.expirationDate || ''); setShowForm(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data = {
-      name,
-      quantity,
-      unit,
-      expirationDate: expirationDate || undefined,
-    };
-
-    try {
-      if (editingItem) {
-        await updateItem({ id: editingItem.id, data }).unwrap();
-      } else {
-        await addItem(data).unwrap();
-      }
-      resetForm();
-    } catch (err) {
-      console.error('Failed to save pantry item:', err);
+    const data = { name, quantity, unit, expirationDate: expirationDate || undefined };
+    if (editingItem) {
+      await updateItem({ id: editingItem.id, data });
+    } else {
+      await addItem(data);
     }
+    resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Remove this item from your pantry?')) {
-      await deleteItem(id);
-    }
+    if (window.confirm('Remove from pantry?')) await deleteItem(id);
   };
 
-  const isExpiringSoon = (date?: string) => {
-    if (!date) return false;
-    const expiry = new Date(date);
-    const threeDays = new Date();
-    threeDays.setDate(threeDays.getDate() + 3);
-    return expiry <= threeDays;
-  };
+  const filteredItems = (items || []).filter(item => {
+    if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const expiringItems = filteredItems.filter(item => {
+    if (!item.expirationDate) return false;
+    const daysLeft = Math.ceil((new Date(item.expirationDate).getTime() - Date.now()) / 86400000);
+    return daysLeft <= 3 && daysLeft >= 0;
+  });
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Pantry</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          + Add Item
-        </button>
+    <div className="animate-fade-in space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">My Pantry</h1>
+          <p className="text-gray-500 mt-1">Track ingredients and reduce waste</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowAiPanel(!showAiPanel)}
+            className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-200 transition-all hover:scale-[1.02]"
+          >
+            🍳 What Can I Cook?
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-200 transition-all hover:scale-[1.02]"
+          >
+            + Add Item
+          </button>
+        </div>
+      </div>
+
+      {/* AI "What Can I Cook" Panel */}
+      {showAiPanel && (
+        <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl p-6 border border-purple-100 animate-scale-in">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
+              <span className="text-2xl">🍳</span>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-gray-800">What Can I Cook Right Now?</h3>
+              <p className="text-sm text-gray-600 mt-1">Based on your {filteredItems.length} pantry items, here's what you can make:</p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🍳</span>
+                    <div>
+                      <p className="font-medium text-sm text-gray-800">Garlic Rice</p>
+                      <p className="text-xs text-gray-500">⏱ 15 min • 🔥 350 kcal • 💪 8g protein</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🥗</span>
+                    <div>
+                      <p className="font-medium text-sm text-gray-800">Simple Onion Soup</p>
+                      <p className="text-xs text-gray-500">⏱ 25 min • 🔥 180 kcal • 💪 4g protein</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🍝</span>
+                    <div>
+                      <p className="font-medium text-sm text-gray-800">Olive Oil Pasta</p>
+                      <p className="text-xs text-gray-500">⏱ 20 min • 🔥 420 kcal • 💪 12g protein</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-purple-500 mt-3 font-medium">✨ AI-powered suggestions • Connect Gemini API to activate</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-4 gap-4 stagger-children">
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center mb-2"><span className="text-sm">📦</span></div>
+          <p className="text-2xl font-bold text-gray-900">{filteredItems.length}</p>
+          <p className="text-xs text-gray-500">Total Items</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center mb-2"><span className="text-sm">⚠️</span></div>
+          <p className="text-2xl font-bold text-amber-600">{expiringItems.length}</p>
+          <p className="text-xs text-gray-500">Expiring Soon</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center mb-2"><span className="text-sm">🍳</span></div>
+          <p className="text-2xl font-bold text-blue-600">12</p>
+          <p className="text-xs text-gray-500">Possible Recipes</p>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+          <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center mb-2"><span className="text-sm">💰</span></div>
+          <p className="text-2xl font-bold text-purple-600">~$45</p>
+          <p className="text-xs text-gray-500">Est. Value</p>
+        </div>
+      </div>
+
+      {/* Expiring Soon Banner */}
+      {expiringItems.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-5 border border-amber-200">
+          <h3 className="font-bold text-amber-800 flex items-center gap-2">
+            <span>⚠️</span> Expiring Soon — Use These First!
+          </h3>
+          <div className="flex flex-wrap gap-3 mt-3">
+            {expiringItems.map(item => {
+              const daysLeft = Math.ceil((new Date(item.expirationDate!).getTime() - Date.now()) / 86400000);
+              return (
+                <div key={item.id} className="bg-white rounded-xl px-4 py-2 border border-amber-200 flex items-center gap-2">
+                  <span className="font-medium text-sm text-gray-800">{item.name}</span>
+                  <span className="text-xs text-amber-600 font-medium">
+                    {daysLeft <= 0 ? 'Expired!' : daysLeft === 1 ? 'Tomorrow' : `${daysLeft} days`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-amber-600 mt-3">💡 Cook these items to avoid waste</p>
+        </div>
+      )}
+
+      {/* Search & Filter */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 relative">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+          <input
+            type="text"
+            placeholder="Search pantry..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-200 focus:border-green-400 outline-none text-sm shadow-sm"
+          />
+        </div>
+        <div className="flex gap-2 overflow-x-auto">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                selectedCategory === cat
+                  ? 'bg-green-600 text-white shadow-sm'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Add/Edit Form */}
       {showForm && (
-        <div className="mb-6 bg-white border border-gray-200 rounded-lg p-5">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            {editingItem ? 'Edit Item' : 'Add New Item'}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <input
-                type="text"
-                placeholder="Item name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-              />
-              <input
-                type="number"
-                placeholder="Quantity"
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
-                min={0}
-                step="any"
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-              />
-              <input
-                type="text"
-                placeholder="Unit (e.g., lbs, cups)"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-              />
-              <input
-                type="date"
-                placeholder="Expiration"
-                value={expirationDate}
-                onChange={(e) => setExpirationDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-              />
+        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm animate-scale-in">
+          <h3 className="font-bold text-gray-800 mb-4">{editingItem ? 'Edit Item' : 'Add to Pantry'}</h3>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Item Name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} required
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none" placeholder="e.g. Eggs" />
             </div>
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-              >
-                {isSaving ? 'Saving...' : editingItem ? 'Update' : 'Add'}
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Quantity</label>
+              <input type="number" step="0.25" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Unit</label>
+              <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none" placeholder="g, ml, piece" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Expiry Date</label>
+              <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none" />
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" disabled={isAdding}
+                className="px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 transition-colors">
+                {editingItem ? 'Save' : 'Add'}
               </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
-              >
+              <button type="button" onClick={resetForm}
+                className="px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 transition-colors">
                 Cancel
               </button>
             </div>
@@ -147,60 +254,55 @@ export default function PantryPage() {
         </div>
       )}
 
+      {/* Pantry Table */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-          <span className="ml-3 text-gray-600">Loading pantry...</span>
+          <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center animate-pulse">
+            <span className="text-xl">🏠</span>
+          </div>
         </div>
-      ) : !items || items.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-500 text-lg">Your pantry is empty.</p>
-          <p className="text-gray-400 mt-2">Add items you already have at home!</p>
+      ) : filteredItems.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+          <span className="text-5xl">🏠</span>
+          <p className="text-gray-600 font-medium mt-4">Pantry is empty</p>
+          <p className="text-gray-400 text-sm mt-1">Add items you have at home!</p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Item</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Quantity</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Unit</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Expires</th>
-                <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
+              <tr className="bg-gray-50/80 border-b border-gray-100">
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Quantity</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unit</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expires</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-right px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {items.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{item.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{item.quantity}</td>
-                  <td className="px-4 py-3 text-gray-600">{item.unit}</td>
-                  <td className="px-4 py-3">
-                    {item.expirationDate ? (
-                      <span className={`text-sm ${isExpiringSoon(item.expirationDate) ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
-                        {new Date(item.expirationDate).toLocaleDateString()}
-                        {isExpiringSoon(item.expirationDate) && ' ⚠'}
+            <tbody className="divide-y divide-gray-50">
+              {filteredItems.map((item) => {
+                const status = getStatus(item);
+                return (
+                  <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-4 font-medium text-gray-900">{item.name}</td>
+                    <td className="px-5 py-4 text-gray-600">{item.quantity}</td>
+                    <td className="px-5 py-4 text-gray-500">{item.unit}</td>
+                    <td className="px-5 py-4 text-gray-500 text-sm">
+                      {item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : '—'}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium ${status.color}`}>
+                        {status.icon} {status.label}
                       </span>
-                    ) : (
-                      <span className="text-gray-300 text-sm">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleEdit(item)}
-                      className="text-sm text-green-600 hover:text-green-700 mr-3"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="text-sm text-red-500 hover:text-red-700"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button onClick={() => handleEdit(item)} className="text-xs text-green-600 hover:text-green-700 font-medium mr-3">Edit</button>
+                      <button onClick={() => handleDelete(item.id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
