@@ -223,14 +223,14 @@ export default function MealPlanPage() {
                                       className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100"
                                     >+</button>
                                   </div>
-                                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="flex items-center gap-1">
                                     <button
                                       onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })}
-                                      className="text-[10px] text-blue-500 hover:text-blue-700" title="Swap recipe"
+                                      className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap recipe"
                                     >🔄</button>
                                     <button
                                       onClick={() => deleteEntry(entry.id)}
-                                      className="text-[10px] text-red-400 hover:text-red-600"
+                                      className="text-[10px] text-red-400 hover:text-red-600 px-0.5"
                                     >✕</button>
                                   </div>
                                 </div>
