@@ -1,12 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: '📊' },
+  { to: '/home', label: 'Home', icon: '🏡' },
   { to: '/meal-plan', label: 'Meal Plan', icon: '📅' },
   { to: '/grocery-list', label: 'Grocery List', icon: '🛒' },
   { to: '/recipes', label: 'Recipes', icon: '📖' },
   { to: '/pantry', label: 'Pantry', icon: '🏠' },
   { to: '/substitutions', label: 'Substitutions', icon: '🔄' },
+  { to: '/dashboard', label: 'Analytics', icon: '📊' },
 ];
 
 export default function Layout() {

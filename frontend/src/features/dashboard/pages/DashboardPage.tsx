@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, Area, AreaChart,
+} from 'recharts';
 
 interface AnalyticsData {
   overview: { totalRecipes: number; totalPantryItems: number; totalMealsPlanned: number; groceryListItems: number };
@@ -10,30 +13,24 @@ interface AnalyticsData {
   slotBreakdown: { name: string; value: number }[];
 }
 
-const mealEmojis: Record<string, string> = {
-  'Spaghetti Bolognese': '🍝',
-  'Chicken Stir Fry': '🥘',
-  'Fluffy Pancakes': '🥞',
-  'Caesar Salad': '🥗',
-  'Creamy Tomato Soup': '🍲',
-  'Beef Tacos': '🌮',
-};
+const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const today = new Date().getDay(); // 0=Sun, 1=Mon...
-const todayIndex = today === 0 ? 6 : today - 1;
+// Mock nutrition data (will be replaced by AI/Gemini)
+const weeklyNutrition = [
+  { day: 'Mon', calories: 1850, protein: 95, carbs: 210, fats: 62 },
+  { day: 'Tue', calories: 2100, protein: 110, carbs: 240, fats: 70 },
+  { day: 'Wed', calories: 1920, protein: 88, carbs: 200, fats: 68 },
+  { day: 'Thu', calories: 2050, protein: 102, carbs: 225, fats: 65 },
+  { day: 'Fri', calories: 1780, protein: 82, carbs: 195, fats: 58 },
+  { day: 'Sat', calories: 2200, protein: 115, carbs: 250, fats: 75 },
+  { day: 'Sun', calories: 1900, protein: 92, carbs: 215, fats: 60 },
+];
 
 export default function DashboardPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [greeting, setGreeting] = useState('');
 
   useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good morning');
-    else if (hour < 17) setGreeting('Good afternoon');
-    else setGreeting('Good evening');
-
     fetch('/api/analytics/summary')
       .then(res => res.json())
       .then(d => { setData(d); setLoading(false); })
@@ -43,198 +40,166 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-100 to-emerald-200 flex items-center justify-center animate-pulse">
-          <span className="text-3xl">🍳</span>
+        <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center animate-pulse">
+          <span className="text-2xl">📊</span>
         </div>
-        <p className="mt-4 text-gray-400 text-sm">Loading your kitchen...</p>
+        <p className="mt-4 text-gray-400 text-sm">Loading analytics...</p>
       </div>
     );
   }
 
+  const avgCalories = Math.round(weeklyNutrition.reduce((a, b) => a + b.calories, 0) / 7);
+  const avgProtein = Math.round(weeklyNutrition.reduce((a, b) => a + b.protein, 0) / 7);
+  const avgCarbs = Math.round(weeklyNutrition.reduce((a, b) => a + b.carbs, 0) / 7);
+  const avgFats = Math.round(weeklyNutrition.reduce((a, b) => a + b.fats, 0) / 7);
+
   return (
     <div className="animate-fade-in space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{greeting}! 👋</h1>
-          <p className="text-gray-500 mt-1">Eat healthy. Save time. Live better.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link
-            to="/meal-plan"
-            className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-200 transition-all hover:scale-[1.02]"
-          >
-            + Plan Meals
-          </Link>
-        </div>
-      </div>
-
-      {/* Weekly Meal Plan Cards */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-800">Your Meal Plan</h2>
-          <Link to="/meal-plan" className="text-sm text-green-600 hover:text-green-700 font-medium">
-            View full week →
-          </Link>
-        </div>
-        <div className="grid grid-cols-7 gap-3 stagger-children">
-          {dayNames.map((day, i) => {
-            const mealsForDay = data?.mealsPerDay[i]?.meals || 0;
-            const isToday = i === todayIndex;
-            return (
-              <div
-                key={day}
-                className={`rounded-2xl p-4 text-center transition-all card-hover ${
-                  isToday
-                    ? 'bg-gradient-to-b from-green-50 to-emerald-50 border-2 border-green-400 shadow-md shadow-green-100'
-                    : 'bg-white border border-gray-100 shadow-sm'
-                }`}
-              >
-                <p className={`text-xs font-semibold uppercase tracking-wide ${isToday ? 'text-green-600' : 'text-gray-400'}`}>
-                  {day}
-                </p>
-                {isToday && <span className="text-[10px] text-green-500 font-bold">TODAY</span>}
-                <div className={`w-14 h-14 mx-auto mt-2 rounded-xl flex items-center justify-center text-2xl ${
-                  mealsForDay > 0
-                    ? 'bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100'
-                    : 'bg-gray-50 border border-gray-100'
-                }`}>
-                  {mealsForDay > 0 ? '🍽️' : '➕'}
-                </div>
-                <p className="mt-2 text-xs text-gray-600 font-medium">
-                  {mealsForDay > 0 ? `${mealsForDay} meal${mealsForDay > 1 ? 's' : ''}` : 'Empty'}
-                </p>
-              </div>
-            );
-          })}
-        </div>
+        <h1 className="text-3xl font-bold text-gray-900">📊 Analytics Dashboard</h1>
+        <p className="text-gray-500 mt-1">Track your nutrition, costs, and meal patterns</p>
       </div>
 
-      {/* Stats Grid */}
+      {/* Nutrition Summary Cards */}
       <div className="grid grid-cols-4 gap-4 stagger-children">
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center mb-3">
-            <span className="text-lg">📖</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{data?.overview.totalRecipes || 0}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Total Recipes</p>
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border border-green-100 card-hover">
+          <p className="text-xs text-green-600 font-semibold uppercase tracking-wide">Avg. Calories</p>
+          <p className="text-3xl font-bold text-green-700 mt-1">{avgCalories}</p>
+          <p className="text-xs text-green-500 mt-1">kcal / day</p>
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mb-3">
-            <span className="text-lg">📅</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{data?.overview.totalMealsPlanned || 0}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Meals Planned</p>
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100 card-hover">
+          <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Avg. Protein</p>
+          <p className="text-3xl font-bold text-blue-700 mt-1">{avgProtein}g</p>
+          <p className="text-xs text-blue-500 mt-1">per day</p>
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center mb-3">
-            <span className="text-lg">🛒</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{data?.overview.groceryListItems || 0}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Grocery Items</p>
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-5 border border-amber-100 card-hover">
+          <p className="text-xs text-amber-600 font-semibold uppercase tracking-wide">Avg. Carbs</p>
+          <p className="text-3xl font-bold text-amber-700 mt-1">{avgCarbs}g</p>
+          <p className="text-xs text-amber-500 mt-1">per day</p>
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center mb-3">
-            <span className="text-lg">🏠</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{data?.overview.totalPantryItems || 0}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Pantry Items</p>
+        <div className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl p-5 border border-rose-100 card-hover">
+          <p className="text-xs text-rose-600 font-semibold uppercase tracking-wide">Avg. Fats</p>
+          <p className="text-3xl font-bold text-rose-700 mt-1">{avgFats}g</p>
+          <p className="text-xs text-rose-500 mt-1">per day</p>
         </div>
       </div>
 
-      {/* Bottom Row: AI Suggestions + Grocery Progress */}
+      {/* Charts Row 1 */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Calorie Trend */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+          <h3 className="font-bold text-gray-800 text-sm mb-4">🔥 Daily Calories (This Week)</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={weeklyNutrition}>
+              <defs>
+                <linearGradient id="calorieGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#6b7280' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
+              <Area type="monotone" dataKey="calories" stroke="#10b981" strokeWidth={2.5} fill="url(#calorieGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
+          <p className="text-xs text-green-500 mt-2 font-medium">✨ AI estimates based on meal ingredients</p>
+        </div>
+
+        {/* Protein Trend */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+          <h3 className="font-bold text-gray-800 text-sm mb-4">💪 Daily Protein (This Week)</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={weeklyNutrition}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#6b7280' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
+              <Bar dataKey="protein" fill="url(#proteinGrad)" radius={[6, 6, 0, 0]} />
+              <defs>
+                <linearGradient id="proteinGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#3b82f6" />
+                  <stop offset="100%" stopColor="#6366f1" />
+                </linearGradient>
+              </defs>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Charts Row 2 */}
       <div className="grid grid-cols-3 gap-6">
-        {/* AI Suggestion Card */}
-        <div className="col-span-2 bg-gradient-to-br from-[#f0fdf4] to-[#ecfdf5] rounded-2xl p-6 border border-green-100 shadow-sm">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
-              <span className="text-2xl">🤖</span>
-            </div>
-            <div className="flex-1">
-              <h3 className="font-bold text-gray-800 text-sm">AI-Powered Suggestion</h3>
-              <p className="text-gray-600 text-sm mt-2 leading-relaxed">
-                {data && data.overview.totalMealsPlanned > 3
-                  ? "You're doing great this week! Consider adding more variety with leafy greens and whole grains."
-                  : "Start planning your meals for the week! Adding at least 5 meals helps maintain a balanced diet."}
-              </p>
-              <div className="flex gap-2 mt-3">
-                <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-green-700 border border-green-200">🥬 Add greens</span>
-                <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-amber-700 border border-amber-200">🥚 More protein</span>
-                <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-blue-700 border border-blue-200">💧 Stay hydrated</span>
-              </div>
-            </div>
-            <div className="flex-shrink-0 text-4xl animate-float">
-              🥗
+        {/* Meals per day */}
+        {data && (
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-800 text-sm mb-4">📅 Meals Per Day</h3>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={data.mealsPerDay}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
+                <Bar dataKey="meals" fill="#10b981" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Grocery by section */}
+        {data && data.sectionBreakdown.length > 0 && (
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-800 text-sm mb-4">🛍️ Grocery by Section</h3>
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie data={data.sectionBreakdown} cx="50%" cy="50%" innerRadius={35} outerRadius={65} dataKey="value" nameKey="name" paddingAngle={3}>
+                  {data.sectionBreakdown.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Top Ingredients */}
+        {data && data.topIngredients.length > 0 && (
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-800 text-sm mb-4">🥬 Top Ingredients</h3>
+            <div className="space-y-2.5">
+              {data.topIngredients.slice(0, 5).map((ing, i) => (
+                <div key={ing.name} className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-gray-400 w-4">{i + 1}</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{
+                      width: `${(ing.count / (data.topIngredients[0]?.count || 1)) * 100}%`,
+                      background: COLORS[i % COLORS.length]
+                    }} />
+                  </div>
+                  <span className="text-xs font-medium text-gray-700 w-20 text-right">{ing.name}</span>
+                  <span className="text-xs text-gray-400">{ing.count}x</span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-
-        {/* Shopping Progress */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-          <h3 className="font-bold text-gray-800 text-sm mb-4">Shopping Progress</h3>
-          {data && data.groceryStats.total > 0 ? (
-            <div className="flex flex-col items-center">
-              <div className="relative w-28 h-28">
-                <svg className="w-full h-full -rotate-90">
-                  <circle cx="56" cy="56" r="46" fill="none" stroke="#f1f5f9" strokeWidth="10" />
-                  <circle
-                    cx="56" cy="56" r="46" fill="none" strokeWidth="10"
-                    stroke="url(#progressGrad)"
-                    strokeDasharray={`${(data.groceryStats.checked / data.groceryStats.total) * 289} 289`}
-                    strokeLinecap="round"
-                    className="transition-all duration-1000"
-                  />
-                  <defs>
-                    <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#10b981" />
-                      <stop offset="100%" stopColor="#06b6d4" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xl font-bold text-gray-900">
-                    {Math.round((data.groceryStats.checked / data.groceryStats.total) * 100)}%
-                  </span>
-                  <span className="text-[10px] text-gray-400">complete</span>
-                </div>
-              </div>
-              <p className="mt-3 text-xs text-gray-500">
-                {data.groceryStats.checked}/{data.groceryStats.total} items
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-4 text-gray-400">
-              <span className="text-3xl mb-2">🛒</span>
-              <p className="text-xs">Generate a grocery list!</p>
-              <Link to="/grocery-list" className="mt-2 text-xs text-green-600 font-medium hover:text-green-700">
-                Go to list →
-              </Link>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Top Ingredients */}
-      {data && data.topIngredients.length > 0 && (
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-          <h3 className="font-bold text-gray-800 text-sm mb-4">🥬 Most Used Ingredients</h3>
-          <div className="flex flex-wrap gap-2">
-            {data.topIngredients.slice(0, 8).map((ing, i) => (
-              <span
-                key={ing.name}
-                className="px-3 py-1.5 rounded-full text-xs font-medium border"
-                style={{
-                  backgroundColor: ['#ecfdf5', '#eff6ff', '#fef3c7', '#fce7f3', '#f3e8ff', '#ecfeff', '#fef2f2', '#f0fdf4'][i % 8],
-                  borderColor: ['#a7f3d0', '#bfdbfe', '#fde68a', '#fbcfe8', '#e9d5ff', '#a5f3fc', '#fecaca', '#bbf7d0'][i % 8],
-                  color: ['#065f46', '#1e40af', '#92400e', '#9d174d', '#6b21a8', '#155e75', '#991b1b', '#166534'][i % 8],
-                }}
-              >
-                {ing.name} ({ing.count})
-              </span>
-            ))}
-          </div>
+      {/* Cost & Summary */}
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl p-6 border border-purple-100">
+          <h3 className="font-bold text-gray-800 text-sm mb-2">💰 Weekly Cost Estimate</h3>
+          <p className="text-3xl font-bold text-purple-700">${(data?.overview.groceryListItems || 0) * 3}</p>
+          <p className="text-xs text-purple-500 mt-1">Based on average ingredient prices</p>
+          <p className="text-xs text-purple-400 mt-2">✨ AI-powered cost estimation • Connect Gemini API for accurate pricing</p>
         </div>
-      )}
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-100">
+          <h3 className="font-bold text-gray-800 text-sm mb-2">🏠 Pantry Savings</h3>
+          <p className="text-3xl font-bold text-green-700">${(data?.overview.totalPantryItems || 0) * 2}</p>
+          <p className="text-xs text-green-500 mt-1">Saved by using pantry items this week</p>
+          <p className="text-xs text-green-400 mt-2">Based on {data?.overview.totalPantryItems || 0} pantry items already owned</p>
+        </div>
+      </div>
     </div>
   );
 }
