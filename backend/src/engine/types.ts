@@ -11,6 +11,7 @@ export interface PantryEntry {
   name: string;
   quantity: number;
   unit: string;
+  expirationDate?: string | null;
 }
 
 export interface SubstitutionRule {

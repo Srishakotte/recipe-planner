@@ -25,6 +25,7 @@ function getWeekStart(date: Date): string {
 export default function MealPlanPage() {
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
   const [showAddModal, setShowAddModal] = useState<{ date: string; slot: string } | null>(null);
+  const [showSwapModal, setShowSwapModal] = useState<{ entryId: string; date: string; slot: string; currentServings: number } | null>(null);
   const [selectedRecipeId, setSelectedRecipeId] = useState('');
   const [servings, setServings] = useState(2);
 
@@ -72,6 +73,20 @@ export default function MealPlanPage() {
     setShowAddModal(null);
     setSelectedRecipeId('');
     setServings(2);
+  };
+
+  const handleSwap = async () => {
+    if (!showSwapModal || !selectedRecipeId) return;
+    // delete old entry then add new one
+    await deleteEntry(showSwapModal.entryId);
+    await addEntry({
+      recipeId: selectedRecipeId,
+      planDate: showSwapModal.date,
+      mealSlot: showSwapModal.slot,
+      servings: showSwapModal.currentServings,
+    });
+    setShowSwapModal(null);
+    setSelectedRecipeId('');
   };
 
   const handleCopyPreviousWeek = async () => {
@@ -208,10 +223,16 @@ export default function MealPlanPage() {
                                       className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100"
                                     >+</button>
                                   </div>
-                                  <button
-                                    onClick={() => deleteEntry(entry.id)}
-                                    className="text-[10px] text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  >✕</button>
+                                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })}
+                                      className="text-[10px] text-blue-500 hover:text-blue-700" title="Swap recipe"
+                                    >🔄</button>
+                                    <button
+                                      onClick={() => deleteEntry(entry.id)}
+                                      className="text-[10px] text-red-400 hover:text-red-600"
+                                    >✕</button>
+                                  </div>
                                 </div>
                               </div>
                             ))
@@ -299,6 +320,45 @@ export default function MealPlanPage() {
                 </button>
                 <button
                   onClick={() => setShowAddModal(null)}
+                  className="px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Swap Recipe Modal */}
+      {showSwapModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowSwapModal(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-1">🔄 Swap Recipe</h2>
+            <p className="text-sm text-gray-500 mb-5">Choose a different recipe for this slot (keeps same servings)</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">New Recipe</label>
+                <select
+                  value={selectedRecipeId}
+                  onChange={(e) => setSelectedRecipeId(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none text-sm"
+                >
+                  <option value="">Choose replacement...</option>
+                  {recipes.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSwap}
+                  disabled={!selectedRecipeId}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:shadow-lg disabled:opacity-50 transition-all text-sm"
+                >
+                  Swap Recipe
+                </button>
+                <button
+                  onClick={() => setShowSwapModal(null)}
                   className="px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors text-sm"
                 >
                   Cancel

@@ -4,7 +4,7 @@ import {
   GeneratedGroceryList, GroceryWarning, GrocerySourceRecipe, RoundingStrategy,
 } from './types';
 import { normalizeIngredientName, normalizeUnit } from './normalize';
-import { convertUnits } from './convert';
+import { convertUnits, getUnitType } from './convert';
 import { scaleQuantity, roundQuantity } from './scale';
 
 export interface GenerationInput {
@@ -76,6 +76,30 @@ export function generateGroceryList(input: GenerationInput): GeneratedGroceryLis
   // STEP 3: Normalize Names
   lines = lines.map(line => ({ ...line, ingredientName: normalizeIngredientName(line.ingredientName, synonymMap) }));
 
+  // STEP 2.5: Allergen check — warn if ingredient matches constraint but no substitution exists
+  if (constraints.length > 0) {
+    for (const line of lines) {
+      for (const constraint of constraints) {
+        // check if this ingredient IS the allergen (e.g. ingredient "peanut" with constraint "no-peanuts")
+        const allergenName = constraint.constraintValue.replace('no-', '').replace('-free', '').toLowerCase();
+        if (line.ingredientName.includes(allergenName)) {
+          // check if a substitution already handled it
+          const hasSub = substitutions.find(
+            s => s.originalIngredient.toLowerCase() === line.ingredientName &&
+                 activeConstraintValues.includes(s.constraintValue.toLowerCase())
+          );
+          if (!hasSub) {
+            allWarnings.push({
+              type: 'substitution_conflict',
+              message: `⚠️ "${line.ingredientName}" may conflict with constraint "${constraint.constraintValue}" — no substitution rule found`,
+              ingredientName: line.ingredientName,
+            });
+          }
+        }
+      }
+    }
+  }
+
   // STEP 4: Normalize Units
   lines = lines.map(line => ({ ...line, unit: normalizeUnit(line.unit) }));
 
@@ -116,9 +140,15 @@ export function generateGroceryList(input: GenerationInput): GeneratedGroceryLis
               unit: line.unit, storeSection: line.storeSection,
               sources: [{ recipeId: line.recipeId, recipeName: line.recipeName, contributionQty: line.quantity }],
             });
+            // determine if it's a density issue or general unit mismatch
+            const existingType = getUnitType(existing.unit);
+            const lineType = getUnitType(line.unit);
+            const isDensityIssue = (existingType === 'volume' && lineType === 'mass') || (existingType === 'mass' && lineType === 'volume');
             allWarnings.push({
-              type: 'unit_mismatch',
-              message: `Cannot merge units for "${line.ingredientName}": ${line.unit} vs ${existing.unit}`,
+              type: isDensityIssue ? 'density_missing' : 'unit_mismatch',
+              message: isDensityIssue
+                ? `Cannot convert "${line.ingredientName}" between ${line.unit} and ${existing.unit} — no density data available`
+                : `Cannot merge units for "${line.ingredientName}": ${line.unit} vs ${existing.unit}`,
               ingredientName: line.ingredientName,
             });
           }
@@ -132,9 +162,18 @@ export function generateGroceryList(input: GenerationInput): GeneratedGroceryLis
     ...item, quantity: roundQuantity(item.quantity, roundingStrategy),
   }));
 
-  // STEP 7: Subtract Pantry
+  // STEP 7: Subtract Pantry (skip expired items)
+  const today = new Date().toISOString().split('T')[0];
   const items: GeneratedGroceryItem[] = rounded.map(item => {
-    const pantryMatch = pantry.find(p => p.name.toLowerCase() === item.ingredientName);
+    const pantryMatch = pantry.find(p => {
+      if (p.name.toLowerCase() !== item.ingredientName) return false;
+      // skip expired items
+      if (p.expirationDate) {
+        const expDate = p.expirationDate.split('T')[0];
+        if (expDate < today) return false;
+      }
+      return true;
+    });
     let pantrySubtracted = 0;
 
     if (pantryMatch) {

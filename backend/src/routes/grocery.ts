@@ -8,12 +8,18 @@ const router = Router();
 
 router.post('/generate', async (req: Request, res: Response) => {
   try {
-    const { weekStart } = req.body;
+    const { weekStart, fromToday } = req.body;
     let where: any = {};
     if (weekStart) {
       const start = new Date(weekStart);
       const end = new Date(start); end.setDate(end.getDate() + 7);
       where.planDate = { gte: start, lt: end };
+    }
+    // If fromToday flag is set, only include today and future meals
+    if (fromToday) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      where.planDate = { ...where.planDate, gte: today };
     }
 
     const entries = await prisma.mealPlanEntry.findMany({ where, include: { recipe: { include: { ingredients: true } } } });
@@ -34,7 +40,7 @@ router.post('/generate', async (req: Request, res: Response) => {
         defaultServings: e.recipe.defaultServings,
         ingredients: e.recipe.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, storeSection: i.storeSection })),
       })),
-      pantry: pantry.map(p => ({ name: p.name, quantity: p.quantity, unit: p.unit })),
+      pantry: pantry.map(p => ({ name: p.name, quantity: p.quantity, unit: p.unit, expirationDate: p.expirationDate?.toISOString() || null })),
       substitutions: substitutions.map(s => ({
         originalIngredient: s.originalIngredient, substituteIngredient: s.substituteIngredient,
         quantityRatio: s.quantityRatio, substituteUnit: s.substituteUnit,
