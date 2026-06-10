@@ -4,13 +4,29 @@ a meal planning app that lets you plan weekly meals, auto-generates a smart groc
 
 ---
 
-## before you start
+## before you start (please read)
 
-the database is hosted on Railway (free tier MySQL). because of this, every request (loading pages, adding recipes, changing meal plans) can take 2-4 seconds. this isnt a bug or performance issue, its Railway's free tier cold-connecting on each query. if you want instant responses, run locally with Docker (steps below).
+every request to the app (loading pages, adding recipes, saving meal plans, generating grocery lists) can take 2-4 seconds to process. this is because the database is hosted on Railway free tier MySQL which has connection latency on every query. this is not a performance bug, its the hosting tier. if you want instant responses, run locally with Docker (steps below).
 
-the app comes pre-seeded with 6 recipes, 10 pantry items, and a sample meal plan. if you want to start from scratch, theres a "Start Fresh" button on the home page. if you cleared everything and want the demo data back, click "Load Sample Data". no terminal commands needed.
+the app comes pre-seeded with 6 recipes, 10 pantry items, and a sample meal plan for the current week. if you want to start from scratch, theres a "Start Fresh" button on the home page. if you cleared everything and want the demo data back, click "Load Sample Data". no terminal commands needed for either.
 
-AI features (recipe suggestions, nutrition estimation, cost estimation) need a Gemini API key. without one, the app still works fully, all AI features fall back to smart hardcoded logic. the core grocery engine has zero AI dependency.
+AI features (recipe suggestions, nutrition estimation, cost estimation) need a Gemini API key from Google AI Studio. without one, the app still works fully. all AI features fall back to smart hardcoded logic. the core grocery engine has zero AI dependency.
+
+---
+
+## .env file
+
+create a file called `.env` inside the `backend/` folder with these three values:
+
+```
+DATABASE_URL="mysql://root:password@localhost:3306/recipe_planner"
+PORT=3001
+GEMINI_API_KEY="your-gemini-api-key-here"
+```
+
+- DATABASE_URL: your MySQL connection string. if using Docker locally, the default above works. if using Railway, copy the connection string from your Railway dashboard (Settings > Variables > DATABASE_URL)
+- PORT: the backend runs on this port. keep it 3001
+- GEMINI_API_KEY: get a free key from https://aistudio.google.com/apikey (optional, app works without it)
 
 ---
 
@@ -86,13 +102,12 @@ the default .env works with docker-compose out of the box, no edits needed.
 
 if you want to use the hosted database instead of running Docker locally:
 
-1. go to railway.app and create a new MySQL service (or use existing one)
-2. copy the connection string from Railway dashboard (Variables tab, DATABASE_URL)
-3. in `backend/.env`, set:
-   ```
-   DATABASE_URL="mysql://root:YOUR_PASSWORD@YOUR_HOST:PORT/railway"
-   ```
-4. run:
+1. go to railway.app, sign in, create a new project
+2. add a MySQL service to the project
+3. go to the MySQL service, click Variables tab
+4. copy the DATABASE_URL value (looks like mysql://root:PASSWORD@HOST:PORT/railway)
+5. in your `backend/.env` file, replace the DATABASE_URL line with the Railway one
+6. run:
    ```bash
    cd backend
    npm install
@@ -102,16 +117,67 @@ if you want to use the hosted database instead of running Docker locally:
    npm run dev
    ```
 
-note: Railway free tier has connection latency. every database query takes 2-4 seconds because the connection pool reconnects frequently. this affects all operations (loading data, adding recipes, saving meal plans, generating grocery lists). for evaluation, i recommend running locally with Docker for instant responses.
+note: Railway free tier has connection latency on every query (2-4 seconds per request). this affects all operations. for the best evaluation experience, run locally with Docker.
 
-## .env configuration
+---
 
+## common errors and fixes
+
+**Error: listen EADDRINUSE: address already in use :::3001**
+
+port 3001 is already occupied by a previous server instance. fix:
+```bash
+npx kill-port 3001
+npm run dev
 ```
-DATABASE_URL="mysql://root:password@localhost:3306/recipe_planner"
-PORT=3001
-GEMINI_API_KEY="your-gemini-api-key"
-GEMINI_MODEL="gemini-2.5-flash"
+if npx kill-port doesnt work:
+```bash
+netstat -ano | findstr :3001
+taskkill /PID <number_shown> /F
+npm run dev
 ```
+
+**Error: Unique constraint failed on ingredient_densities_ingredientName_key**
+
+this happens when running seed on a database that already has data. fix:
+```bash
+npx prisma db push --force-reset
+npm run db:seed
+```
+the --force-reset clears the database completely before seeding.
+
+**Error: EPERM: operation not permitted, rename .prisma/client/query_engine**
+
+Windows file lock issue. close all terminal windows, wait a few seconds, then try again:
+```bash
+npx prisma generate
+npm run dev
+```
+
+**Error: Gemini 503 "high demand" or 404 "model not found"**
+
+Gemini is temporarily overloaded or the model name is deprecated. the app auto-upgrades deprecated models (gemini-1.5-flash, gemini-2.0-flash) to gemini-2.5-flash. if you still get errors, the AI features will fall back to hardcoded logic automatically. no action needed, the app works fine without AI.
+
+**Prisma: Can't reach database server**
+
+make sure MySQL is running. if using Docker:
+```bash
+docker compose up -d
+# wait 10 seconds
+npm run dev
+```
+if using Railway, check that your DATABASE_URL in .env is correct and Railway service is active.
+
+**Frontend shows blank page or cannot connect**
+
+make sure the frontend dev server is running in a separate terminal:
+```bash
+cd frontend
+npm run dev
+```
+then open http://localhost:3000 (not 3001, thats the backend API).
+
+---
 
 ## running tests
 
