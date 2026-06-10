@@ -7,6 +7,7 @@ import pantryRoutes from './routes/pantry';
 import groceryRoutes from './routes/grocery';
 import substitutionRoutes from './routes/substitutions';
 import analyticsRoutes from './routes/analytics';
+import resetRoutes from './routes/reset';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use('/api/pantry', pantryRoutes);
 app.use('/api/grocery', groceryRoutes);
 app.use('/api/substitutions', substitutionRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/reset', resetRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
