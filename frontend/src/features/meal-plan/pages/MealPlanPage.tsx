@@ -310,7 +310,7 @@ export default function MealPlanPage() {
                                         🍱
                                       </button>
                                     )}
-                                    {!isBeforeToday(date) && !canBeLeftover && (
+                                    {!isBeforeToday(date) && (
                                       <button onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })} className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap">🔄</button>
                                     )}
                                     {!isBeforeToday(date) && (
