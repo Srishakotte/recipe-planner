@@ -191,7 +191,7 @@ export default function HomePage() {
                   </div>
                   <div className="flex items-center justify-between py-1.5 pt-2 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-700">Est. Cost</span>
-                    <span className="text-sm font-bold text-gray-900">~₹{needToBuy.length * 3}</span>
+                    <span className="text-sm font-bold text-gray-900">~₹{needToBuy.length * 60}</span>
                   </div>
                 </div>
                 {/* Progress */}

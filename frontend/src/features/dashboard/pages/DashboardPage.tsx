@@ -46,6 +46,8 @@ export default function DashboardPage() {
         <p className="mt-4 text-gray-400 text-sm">Loading analytics...</p>
       </div>
     );
+  const [showNutrition, setShowNutrition] = useState(false);
+  const [estimatingNutrition, setEstimatingNutrition] = useState(false);
   }
 
   const avgCalories = Math.round(weeklyNutrition.reduce((a, b) => a + b.calories, 0) / 7);

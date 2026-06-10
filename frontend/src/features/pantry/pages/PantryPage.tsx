@@ -170,7 +170,7 @@ export default function PantryPage() {
         </div>
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
           <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center mb-2"><span className="text-sm">💰</span></div>
-          <p className="text-2xl font-bold text-purple-600">~$45</p>
+          <p className="text-2xl font-bold text-purple-600">~₹45</p>
           <p className="text-xs text-gray-500">Est. Value</p>
         </div>
       </div>
