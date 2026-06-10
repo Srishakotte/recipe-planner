@@ -32,34 +32,22 @@ GEMINI_API_KEY="your-gemini-api-key-here"
 
 ---
 
-## how i approached this
+## How I Approached This
 
-i spent the first few hours using real meal planning apps to understand what they do well and where they fail.
+I looked at existing meal planning apps (Mealime, Paprika, AnyList, Whisk, Mealboard) to understand what they do well and where they fall short. The main gaps I found:
+- No proper unit conversion (mass to volume especially)
+- Pantry subtraction ignores expiry dates
+- User edits get wiped when the grocery list regenerates
+- No substitution handling for dietary constraints
 
-Mealime has great UX for picking recipes but no pantry management. if you already have onions at home, it still adds them to the list.
-
-Paprika has excellent recipe management but grocery consolidation is basic. if one recipe needs "1 cup milk" and another needs "250ml milk", it shows both separately. no unit conversion.
-
-AnyList is a good list manager but completely disconnected from recipes. no concept of "this item came from this recipe". change your meal plan and the list doesnt update.
-
-Whisk is closest to what i wanted. does consolidation and scaling. but substitution handling doesnt exist, and if you edit the list manually, one meal plan change nukes everything.
-
-Mealboard does pantry subtraction but expired items still count as "available" which is wrong.
-
-the gaps i identified:
-- unit conversion, nobody does it properly (mass to volume especially)
-- pantry subtraction with expiry awareness, expired milk shouldnt count as available
-- user edits surviving regeneration, the "overlay" approach is the only correct solution
-- substitution under constraints, if someone is dairy-free, automatically replace milk with oat milk during generation
-
-i built the grocery engine first as pure functions, tested it with 42 unit tests, then wrapped everything else around it.
+I built the grocery engine first as pure functions, tested it with 42 unit tests, then built the API and UI around it.
 
 ---
 
-## tech stack
+## Tech Stack
 
 - Frontend: React 18 + TypeScript
-- State management: Redux Toolkit + RTK Query (auto-caching + tag-based invalidation)
+- State Management: Redux Toolkit + RTK Query (auto-caching + tag-based invalidation)
 - Styling: Tailwind CSS
 - Backend: Express + TypeScript
 - ORM: Prisma 5
@@ -524,20 +512,19 @@ pure function engine: testable independently of database, deterministic, easy to
 
 ---
 
-## ai usage
+## AI Usage
 
-AI is used for suggestions only:
-- recipe suggestions based on actual pantry items
-- nutrition estimation from actual weekly meal plan (sends real recipes + scaled ingredients to Gemini)
-- grocery cost estimation in INR (sends real grocery list items)
-- substitution suggestions with pantry awareness
-- weekly plan auto-generation from existing recipes
+The app uses Gemini AI for optional features:
+- Recipe suggestions based on pantry items
+- Nutrition estimation from weekly meal plan
+- Grocery cost estimation in INR
+- Substitution suggestions
+- Weekly plan generation
 
-AI does NOT do any core logic. scaling, unit conversion, consolidation, pantry subtraction, conflict resolution, synonym resolution, rounding are all hand-written deterministic code. the app works 100% without AI.
+All core logic (scaling, conversion, consolidation, pantry subtraction, conflict resolution) is hand-written. The app works fully without AI. If Gemini is unavailable, everything falls back to hardcoded logic.
 
-package: @google/genai (Google's newer GenAI SDK)
-model: gemini-2.5-flash (auto-upgraded from deprecated gemini-1.5-flash)
-fallback: if Gemini is unavailable, all features fall back to smart hardcoded logic
+Package: @google/genai
+Model: gemini-2.5-flash
 
 ---
 
@@ -639,25 +626,10 @@ the architecture supports all of this. the engine is pure functions so its easy 
 
 ---
 
-## how i used AI during development
+## AI Used During Development
 
-the ideas, architecture decisions, and feature prioritization are mine. i researched the apps, identified the gaps, decided on the overlay conflict strategy, chose the pure-function engine approach, and designed the leftover system.
-
-for writing code, i used Kiro (AI coding agent) to help with implementation speed. specifically:
-- generating boilerplate (express routes, prisma queries, RTK Query hooks)
-- writing repetitive UI components (forms, modals, cards)
-- debugging edge cases in the leftover tracking logic
-- writing unit tests for the engine
-
-what i did NOT outsource to AI:
-- the grocery engine algorithm design (the 7-step pipeline is my thinking)
-- conflict resolution strategy choice (researched overlay vs overwrite approaches)
-- database schema design (figured out the relationships myself)
-- feature decisions (what to build, what to skip, what goes in future scope)
-
-i think this is how AI should be used: you think, it types. the architecture is yours, the keystrokes are shared.
+I used Kiro (AI coding agent) for writing code faster. It helped with boilerplate generation, repetitive UI components, and debugging. The architecture decisions, algorithm design, schema planning, and feature prioritization were done by me.
 
 ---
 
-built by Kotte Srisha, June 2026.
-no template repos, no starter kits.
+Built by Kotte Srisha, June 2026.
