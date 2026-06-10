@@ -19,6 +19,7 @@ export default function RecipesPage() {
   const [aiRecipes, setAiRecipes] = useState<any[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [suggestRecipes] = useAiSuggestRecipesMutation();
 
   const { data: recipes, isLoading } = useGetRecipesQuery(search || undefined);
@@ -30,7 +31,15 @@ export default function RecipesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await deleteRecipe(id);
+    setDeleteError(null);
+    try {
+      await deleteRecipe(id).unwrap();
+    } catch (err: any) {
+      // Backend returns 409 if recipe is in upcoming meal plan
+      const message = err?.data?.message || err?.data?.error || 'Failed to delete recipe';
+      setDeleteError(message);
+      setTimeout(() => setDeleteError(null), 5000);
+    }
     setConfirmDeleteId(null);
   };
 
@@ -76,6 +85,17 @@ export default function RecipesPage() {
           </button>
         </div>
       </div>
+
+      {/* Delete Error Toast */}
+      {deleteError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 flex items-center gap-3 animate-scale-in">
+          <span className="text-lg">⚠️</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800">{deleteError}</p>
+          </div>
+          <button onClick={() => setDeleteError(null)} className="text-red-400 hover:text-red-600 text-sm">✕</button>
+        </div>
+      )}
 
       {/* AI Generate Section */}
       {showAiGenerate && (

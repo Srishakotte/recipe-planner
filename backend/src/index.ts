@@ -25,7 +25,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// reset database (start fresh)
+// reset database (start fresh — clears all user data)
 app.post('/api/reset', async (req, res) => {
   try {
     const prisma = require('./prisma').default;
@@ -42,6 +42,17 @@ app.post('/api/reset', async (req, res) => {
     await prisma.unitConversion.deleteMany();
     await prisma.ingredientDensity.deleteMany();
     res.json({ message: 'Database cleared. Start fresh!' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// reseed database (reload sample data)
+app.post('/api/reseed', async (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    execSync('npx ts-node prisma/seed.ts', { cwd: __dirname + '/..', timeout: 30000 });
+    res.json({ message: 'Sample data reloaded!' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

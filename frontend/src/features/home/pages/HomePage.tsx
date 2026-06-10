@@ -34,6 +34,9 @@ export default function HomePage() {
   const [botActive, setBotActive] = useState(false);
   const [botLoading, setBotLoading] = useState(false);
   const [botSuggestions, setBotSuggestions] = useState<any[]>([]);
+  const [resetting, setResetting] = useState(false);
+  const [reseeding, setReseeding] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -84,6 +87,25 @@ export default function HomePage() {
     setBotLoading(false);
   };
 
+  const handleStartFresh = async () => {
+    setResetting(true);
+    try {
+      await fetch('/api/reset', { method: 'POST' });
+      window.location.reload();
+    } catch (e) { console.error(e); }
+    setResetting(false);
+    setShowResetConfirm(false);
+  };
+
+  const handleLoadSampleData = async () => {
+    setReseeding(true);
+    try {
+      await fetch('/api/reseed', { method: 'POST' });
+      window.location.reload();
+    } catch (e) { console.error(e); }
+    setReseeding(false);
+  };
+
   return (
     <div className="animate-fade-in space-y-8">
       {/* Header */}
@@ -93,6 +115,22 @@ export default function HomePage() {
           <p className="text-gray-500 mt-1">Eat healthy. Save time. Live better.</p>
         </div>
         <div className="flex gap-3">
+          {showResetConfirm ? (
+            <div className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 rounded-xl animate-scale-in">
+              <span className="text-xs text-red-700 font-medium">Clear everything?</span>
+              <button onClick={handleStartFresh} disabled={resetting} className="px-2.5 py-1 text-xs font-bold bg-red-500 text-white rounded-lg hover:bg-red-600">
+                {resetting ? '...' : 'Yes'}
+              </button>
+              <button onClick={() => setShowResetConfirm(false)} className="px-2.5 py-1 text-xs font-bold bg-gray-200 text-gray-700 rounded-lg">No</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowResetConfirm(true)} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-all">
+              🧹 Start Fresh
+            </button>
+          )}
+          <button onClick={handleLoadSampleData} disabled={reseeding} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all disabled:opacity-50">
+            {reseeding ? '⏳ Loading...' : '📦 Load Sample Data'}
+          </button>
           <Link to="/meal-plan" className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-200 transition-all hover:scale-[1.02]">
             + Plan Meals
           </Link>
