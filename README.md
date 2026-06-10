@@ -633,5 +633,25 @@ the architecture supports all of this. the engine is pure functions so its easy 
 
 ---
 
-built from scratch by Kotte Srisha, June 2026.
+## how i used AI during development
+
+the ideas, architecture decisions, and feature prioritization are mine. i researched the apps, identified the gaps, decided on the overlay conflict strategy, chose the pure-function engine approach, and designed the leftover system.
+
+for writing code, i used Kiro (AI coding agent) to help with implementation speed. specifically:
+- generating boilerplate (express routes, prisma queries, RTK Query hooks)
+- writing repetitive UI components (forms, modals, cards)
+- debugging edge cases in the leftover tracking logic
+- writing unit tests for the engine
+
+what i did NOT outsource to AI:
+- the grocery engine algorithm design (the 7-step pipeline is my thinking)
+- conflict resolution strategy choice (researched overlay vs overwrite approaches)
+- database schema design (figured out the relationships myself)
+- feature decisions (what to build, what to skip, what goes in future scope)
+
+i think this is how AI should be used: you think, it types. the architecture is yours, the keystrokes are shared.
+
+---
+
+built by Kotte Srisha, June 2026.
 no template repos, no starter kits.
