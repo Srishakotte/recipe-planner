@@ -340,6 +340,9 @@ export default function MealPlanPage() {
             <div className="text-center"><p className="text-2xl font-bold text-amber-600">{entries.filter(e => (e as any).isLeftover).length}</p><p className="text-xs text-gray-500">Leftovers</p></div>
             <div className="text-center"><p className="text-2xl font-bold text-purple-600">{new Set(entries.map(e => e.recipeId)).size}</p><p className="text-xs text-gray-500">Unique Recipes</p></div>
           </div>
+          {availableLeftovers.length > 0 && (
+            <p className="text-[10px] text-amber-600 text-center mt-3 font-medium">Tip: You have leftover servings available. Use them when adding new meals to save on groceries.</p>
+          )}
         </div>
       )}
 

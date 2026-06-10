@@ -1,22 +1,24 @@
 # Recipe Planner + Grocery List
 
-a meal planning app that lets you plan weekly meals, auto-generates a smart grocery list, handles unit conversions, pantry subtraction, substitutions and keeps everything in sync when plans change.
+A meal planning app that lets you plan weekly meals, auto-generates a smart grocery list, handles unit conversions, pantry subtraction, substitutions and keeps everything in sync when plans change.
 
 ---
 
-## before you start (please read)
+## Before You Start
 
-every request to the app (loading pages, adding recipes, saving meal plans, generating grocery lists) can take 2-4 seconds to process. this is because the database is hosted on Railway free tier MySQL which has connection latency on every query. this is not a performance bug, its the hosting tier. if you want instant responses, run locally with Docker (steps below).
+**The application will be slow.** Every request (loading pages, adding recipes, saving meal plans, generating grocery lists) takes 2-4 seconds. This is because the database is hosted on Railway free tier MySQL which has connection latency on every single query. This is NOT a performance bug or code issue - it is the free hosting tier reconnecting on each request. For instant responses, run locally with Docker (steps below).
 
-the app comes pre-seeded with 6 recipes, 10 pantry items, and a sample meal plan for the current week. if you want to start from scratch, theres a "Start Fresh" button on the home page. if you cleared everything and want the demo data back, click "Load Sample Data". no terminal commands needed for either.
+The app comes pre-seeded with 6 recipes, 10 pantry items, and a sample meal plan for the current week. The sample data includes a **leftover example** - Tuesday's Pancakes are marked as leftover (yellow card with recycle icon), and Thursday reuses 2 servings from that leftover (grey card). This shows the full leftover flow working out of the box.
 
-AI features (recipe suggestions, nutrition estimation, cost estimation) need a Gemini API key from Google AI Studio. without one, the app still works fully. all AI features fall back to smart hardcoded logic. the core grocery engine has zero AI dependency.
+If you want to start from scratch, there is a "Start Fresh" button on the home page. If you cleared everything and want the demo data back, click "Load Sample Data". No terminal commands needed for either.
+
+AI features (recipe suggestions, nutrition estimation, cost estimation) need a Gemini API key from Google AI Studio. Without one, the app still works fully. All AI features fall back to smart hardcoded logic. The core grocery engine has zero AI dependency.
 
 ---
 
-## .env file
+## .env File
 
-create a file called `.env` inside the `backend/` folder with these three values:
+Create a file called `.env` inside the `backend/` folder with these three values:
 
 ```
 DATABASE_URL="mysql://root:password@localhost:3306/recipe_planner"
@@ -24,9 +26,9 @@ PORT=3001
 GEMINI_API_KEY="your-gemini-api-key-here"
 ```
 
-- DATABASE_URL: your MySQL connection string. if using Docker locally, the default above works. if using Railway, copy the connection string from your Railway dashboard (Settings > Variables > DATABASE_URL)
-- PORT: the backend runs on this port. keep it 3001
-- GEMINI_API_KEY: get a free key from https://aistudio.google.com/apikey (optional, app works without it)
+- DATABASE_URL: Your MySQL connection string. If using Docker locally, the default above works. If using Railway, copy the connection string from your Railway dashboard (Settings > Variables > DATABASE_URL).
+- PORT: The backend runs on this port. Keep it 3001.
+- GEMINI_API_KEY: Get a free key from https://aistudio.google.com/apikey (optional, app works without it).
 
 ---
 
@@ -340,19 +342,23 @@ why not "overwrite + undo": undo stack is complex, users lose trust if their edi
 
 ---
 
-## leftover system
+## Leftover System
 
-past and current meals can be marked as leftover using the toggle button. this opens a modal with an expiry date picker (defaults to tomorrow). leftover meals skip grocery generation since their ingredients were already purchased.
+Past and current meals can be marked as leftover using the toggle button. This opens a modal with an expiry date picker (defaults to tomorrow). Leftover meals skip grocery generation since their ingredients were already purchased.
 
-when adding new meals, available leftovers are shown with remaining servings. serving cap is enforced so you cant use more servings than available. the tracking is dynamic: if you have 4 servings of leftover and use 2, it shows 2 remaining. if you delete that meal, it goes back to 4.
+When adding new meals, available leftovers are shown with remaining servings. Serving cap is enforced so you cannot use more servings than available. The tracking is dynamic: if you have 4 servings of leftover and use 2, it shows 2 remaining. If you delete that meal, it goes back to 4.
 
-color coding in the meal plan:
-- yellow card means its a leftover source (past meal marked as leftover)
-- grey card means its consuming leftover servings (future meal using leftovers)
-- green card means its a normal planned meal
-- dimmed/blurred means past day (locked, only leftover toggle visible)
+**How to identify leftovers in the UI:**
+- Yellow card with leftover icon = this meal IS the leftover source (you ate it and marked the remainder)
+- Grey card with recycle icon = this meal is REUSING leftover servings (no new groceries needed)
+- Green card = normal planned meal
+- Dimmed/blurred = past day (locked, only leftover toggle visible)
 
-unmarking a leftover is one click, no modal needed. it immediately removes from available leftovers.
+**Rules:**
+- Cannot unmark a leftover if future meals are consuming from it (shows error message)
+- Expired leftovers automatically disappear from available list
+- Leftover sources must have an expiry date (set during marking)
+- Consumers are visually distinct (grey + recycle icon) so you know which meals are "free" from grocery perspective
 
 ---
 

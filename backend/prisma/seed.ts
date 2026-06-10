@@ -182,18 +182,55 @@ async function main() {
   monday.setDate(today.getDate() + diff);
   monday.setHours(12, 0, 0, 0); // noon to avoid timezone issues
 
-  await prisma.mealPlanEntry.createMany({
-    data: [
-      { recipeId: stirFry.id, planDate: monday, mealSlot: 'dinner', servings: 2 },
-      { recipeId: pancakes.id, planDate: new Date(monday.getTime() + 86400000), mealSlot: 'breakfast', servings: 4 },
-      { recipeId: caesarSalad.id, planDate: new Date(monday.getTime() + 86400000), mealSlot: 'lunch', servings: 2 },
-      { recipeId: spaghetti.id, planDate: new Date(monday.getTime() + 86400000 * 2), mealSlot: 'dinner', servings: 4 },
-      { recipeId: tomatoSoup.id, planDate: new Date(monday.getTime() + 86400000 * 3), mealSlot: 'lunch', servings: 4 },
-      { recipeId: tacos.id, planDate: new Date(monday.getTime() + 86400000 * 4), mealSlot: 'dinner', servings: 4 },
-    ],
+  // Monday dinner: Chicken Stir Fry (normal meal)
+  await prisma.mealPlanEntry.create({
+    data: { recipeId: stirFry.id, planDate: monday, mealSlot: 'dinner', servings: 2 },
   });
 
-  console.log('Seed complete! Created 6 recipes, 8 pantry items, 6 meal plan entries');
+  // Tuesday breakfast: Pancakes, marked as leftover (2 servings left over for reuse)
+  await prisma.mealPlanEntry.create({
+    data: {
+      recipeId: pancakes.id,
+      planDate: new Date(monday.getTime() + 86400000),
+      mealSlot: 'breakfast',
+      servings: 4,
+      isLeftover: true,
+      leftoverExpiryDate: new Date(monday.getTime() + 86400000 * 4), // expires in 3 more days
+    },
+  });
+
+  // Tuesday lunch: Caesar Salad (normal)
+  await prisma.mealPlanEntry.create({
+    data: { recipeId: caesarSalad.id, planDate: new Date(monday.getTime() + 86400000), mealSlot: 'lunch', servings: 2 },
+  });
+
+  // Wednesday dinner: Spaghetti (normal)
+  await prisma.mealPlanEntry.create({
+    data: { recipeId: spaghetti.id, planDate: new Date(monday.getTime() + 86400000 * 2), mealSlot: 'dinner', servings: 4 },
+  });
+
+  // Thursday lunch: Tomato Soup (normal)
+  await prisma.mealPlanEntry.create({
+    data: { recipeId: tomatoSoup.id, planDate: new Date(monday.getTime() + 86400000 * 3), mealSlot: 'lunch', servings: 4 },
+  });
+
+  // Thursday breakfast: reusing Pancakes leftover (2 servings from Tuesday)
+  await prisma.mealPlanEntry.create({
+    data: {
+      recipeId: pancakes.id,
+      planDate: new Date(monday.getTime() + 86400000 * 3),
+      mealSlot: 'breakfast',
+      servings: 2,
+      isLeftover: true, // this is a CONSUMER (no leftoverExpiryDate = consuming from leftover)
+    },
+  });
+
+  // Friday dinner: Tacos (normal)
+  await prisma.mealPlanEntry.create({
+    data: { recipeId: tacos.id, planDate: new Date(monday.getTime() + 86400000 * 4), mealSlot: 'dinner', servings: 4 },
+  });
+
+  console.log('Seed complete! Created 6 recipes, 10 pantry items, 7 meal plan entries (includes leftover example)');
 }
 
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
