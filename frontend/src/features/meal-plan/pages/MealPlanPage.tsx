@@ -222,10 +222,24 @@ export default function MealPlanPage() {
                               <span className="text-[10px] text-gray-300">+ add</span>
                             </div>
                           ) : (
-                            slotEntries.map(entry => (
-                              <div key={entry.id} className={`rounded-lg p-1.5 mb-1 group ${(entry as any).isLeftover ? 'bg-amber-50 border border-amber-200' : 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200'}`}>
+                            slotEntries.map(entry => {
+                              // Determine card style:
+                              // - Yellow: marked as leftover SOURCE (past meal marked isLeftover)
+                              // - Grey: consumed FROM leftover (future meal with isLeftover flag = used leftover)
+                              // - Normal green: regular meal
+                              const isLeftoverSource = (entry as any).isLeftover && isPastMeal(date, slot);
+                              const isLeftoverConsumed = (entry as any).isLeftover && !isPastMeal(date, slot);
+                              let cardStyle = 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200';
+                              if (isLeftoverSource) {
+                                cardStyle = 'bg-amber-50 border border-amber-200';
+                              } else if (isLeftoverConsumed) {
+                                cardStyle = 'bg-gray-100 border border-gray-300';
+                              }
+                              return (
+                              <div key={entry.id} className={`rounded-lg p-1.5 mb-1 group ${cardStyle}`}>
                                 <p className="text-[11px] font-semibold text-gray-800 truncate">
-                                  {(entry as any).isLeftover && <span className="text-amber-500 mr-0.5">🍱</span>}
+                                  {isLeftoverSource && <span className="text-amber-500 mr-0.5">🍱</span>}
+                                  {isLeftoverConsumed && <span className="text-gray-400 mr-0.5">♻️</span>}
                                   {entry.recipe?.name}
                                 </p>
                                 <div className="flex items-center justify-between mt-0.5">
@@ -241,7 +255,15 @@ export default function MealPlanPage() {
                                   )}
                                   <div className="flex items-center gap-1">
                                     {canBeLeftover && (
-                                      <button onClick={() => setShowLeftoverModal({ entryId: entry.id, recipeName: entry.recipe?.name || 'Meal' })} className={`text-[9px] px-1 rounded ${(entry as any).isLeftover ? 'text-amber-600 font-bold' : 'text-gray-400 hover:text-amber-500'}`} title={`${(entry as any).isLeftover ? 'Unmark' : 'Mark as'} leftover`}>
+                                      <button onClick={() => {
+                                        if ((entry as any).isLeftover) {
+                                          // Directly unmark leftover
+                                          updateEntry({ id: entry.id, data: { isLeftover: false, leftoverExpiryDate: null } as any });
+                                        } else {
+                                          // Open modal to mark as leftover with expiry
+                                          setShowLeftoverModal({ entryId: entry.id, recipeName: entry.recipe?.name || 'Meal' });
+                                        }
+                                      }} className={`text-[9px] px-1 rounded ${(entry as any).isLeftover ? 'text-amber-600 font-bold' : 'text-gray-400 hover:text-amber-500'}`} title={`${(entry as any).isLeftover ? 'Unmark' : 'Mark as'} leftover`}>
                                         🍱
                                       </button>
                                     )}
@@ -254,7 +276,8 @@ export default function MealPlanPage() {
                                   </div>
                                 </div>
                               </div>
-                            ))
+                            );
+                            })
                           )}
                         </div>
                       );

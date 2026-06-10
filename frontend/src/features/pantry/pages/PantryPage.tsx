@@ -45,27 +45,95 @@ export default function PantryPage() {
 
   const handleEdit = (item: PantryItem) => {
     setEditingItem(item); setName(item.name); setQuantity(item.quantity);
-    setUnit(item.unit); setExpirationDate(item.expirationDate || ''); setShowForm(true);
+    setUnit(item.unit);
+    // Format date for input[type="date"] — needs YYYY-MM-DD
+    const expDate = item.expirationDate ? item.expirationDate.split('T')[0] : '';
+    setExpirationDate(expDate);
+    setShowForm(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const data = { name, quantity, unit, expirationDate: expirationDate || undefined };
-    if (editingItem) {
-      await updateItem({ id: editingItem.id, data });
-    } else {
-      await addItem(data);
+    try {
+      if (editingItem) {
+        await updateItem({ id: editingItem.id, data }).unwrap();
+      } else {
+        await addItem(data).unwrap();
+      }
+    } catch (err) {
+      console.error('Pantry operation failed:', err);
     }
     resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Remove from pantry?')) await deleteItem(id);
+    if (window.confirm('Remove from pantry?')) {
+      try {
+        await deleteItem(id).unwrap();
+      } catch (err) {
+        console.error('Delete failed:', err);
+      }
+    }
   };
 
   const filteredItems = (items || []).filter(item => {
     if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
+  });
+
+  // Group items by name (same ingredient with different expiry dates)
+  interface GroupedItem {
+    name: string;
+    unit: string;
+    totalQty: number;
+    entries: PantryItem[]; // individual entries (may have different expiry)
+    expiringQty: number; // quantity expiring within 3 days
+    expiredQty: number; // quantity already expired
+    safeQty: number; // quantity NOT expiring soon
+    earliestExpiry: string | null;
+  }
+
+  const groupedItems: GroupedItem[] = [];
+  const grouped: Record<string, PantryItem[]> = {};
+  filteredItems.forEach(item => {
+    const key = `${item.name.toLowerCase().trim()}|||${item.unit.toLowerCase().trim()}`;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(item);
+  });
+
+  Object.values(grouped).forEach(entries => {
+    const totalQty = entries.reduce((sum, e) => sum + e.quantity, 0);
+    let expiringQty = 0;
+    let expiredQty = 0;
+    let earliestExpiry: string | null = null;
+
+    entries.forEach(e => {
+      if (e.expirationDate) {
+        const daysLeft = Math.ceil((new Date(e.expirationDate).getTime() - Date.now()) / 86400000);
+        if (daysLeft <= 0) {
+          expiredQty += e.quantity;
+        } else if (daysLeft <= 3) {
+          expiringQty += e.quantity;
+        }
+        if (!earliestExpiry || e.expirationDate < earliestExpiry) {
+          earliestExpiry = e.expirationDate;
+        }
+      }
+    });
+
+    const safeQty = totalQty - expiringQty - expiredQty;
+
+    groupedItems.push({
+      name: entries[0].name,
+      unit: entries[0].unit,
+      totalQty,
+      entries,
+      expiringQty,
+      expiredQty,
+      safeQty,
+      earliestExpiry,
+    });
   });
 
   const expiringItems = filteredItems.filter(item => {
@@ -155,8 +223,8 @@ export default function PantryPage() {
       <div className="grid grid-cols-4 gap-4 stagger-children">
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
           <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center mb-2"><span className="text-sm">📦</span></div>
-          <p className="text-2xl font-bold text-gray-900">{filteredItems.length}</p>
-          <p className="text-xs text-gray-500">Total Items</p>
+          <p className="text-2xl font-bold text-gray-900">{groupedItems.length}</p>
+          <p className="text-xs text-gray-500">Unique Items</p>
         </div>
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
           <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center mb-2"><span className="text-sm">⚠️</span></div>
@@ -164,14 +232,14 @@ export default function PantryPage() {
           <p className="text-xs text-gray-500">Expiring Soon</p>
         </div>
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center mb-2"><span className="text-sm">🍳</span></div>
-          <p className="text-2xl font-bold text-blue-600">12</p>
-          <p className="text-xs text-gray-500">Possible Recipes</p>
+          <div className="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center mb-2"><span className="text-sm">❌</span></div>
+          <p className="text-2xl font-bold text-red-600">{groupedItems.reduce((s, g) => s + g.expiredQty, 0)}</p>
+          <p className="text-xs text-gray-500">Expired Qty</p>
         </div>
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center mb-2"><span className="text-sm">💰</span></div>
-          <p className="text-2xl font-bold text-purple-600">~₹45</p>
-          <p className="text-xs text-gray-500">Est. Value</p>
+          <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center mb-2"><span className="text-sm">✅</span></div>
+          <p className="text-2xl font-bold text-green-600">{filteredItems.length}</p>
+          <p className="text-xs text-gray-500">Total Entries</p>
         </div>
       </div>
 
@@ -266,14 +334,14 @@ export default function PantryPage() {
         </div>
       )}
 
-      {/* Pantry Table */}
+      {/* Pantry Table — Grouped by item name */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center animate-pulse">
             <span className="text-xl">🏠</span>
           </div>
         </div>
-      ) : filteredItems.length === 0 ? (
+      ) : groupedItems.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
           <span className="text-5xl">🏠</span>
           <p className="text-gray-600 font-medium mt-4">Pantry is empty</p>
@@ -285,32 +353,99 @@ export default function PantryPage() {
             <thead>
               <tr className="bg-gray-50/80 border-b border-gray-100">
                 <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Quantity</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unit</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expires</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Available</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expiring</th>
                 <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="text-right px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredItems.map((item) => {
-                const status = getStatus(item);
+              {groupedItems.map((group) => {
+                // Determine overall status for the group
+                let statusLabel = 'Good';
+                let statusColor = 'bg-green-100 text-green-700';
+                let statusIcon = '✓';
+                if (group.expiredQty > 0) {
+                  statusLabel = `${group.expiredQty} expired`;
+                  statusColor = 'bg-red-100 text-red-700';
+                  statusIcon = '⚠️';
+                } else if (group.expiringQty > 0) {
+                  statusLabel = `${group.expiringQty} expiring`;
+                  statusColor = 'bg-amber-100 text-amber-700';
+                  statusIcon = '⏰';
+                }
+
                 return (
-                  <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-5 py-4 font-medium text-gray-900">{item.name}</td>
-                    <td className="px-5 py-4 text-gray-600">{item.quantity}</td>
-                    <td className="px-5 py-4 text-gray-500">{item.unit}</td>
-                    <td className="px-5 py-4 text-gray-500 text-sm">
-                      {item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : '·'}
+                  <tr key={group.name + group.unit} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-4">
+                      <span className="font-medium text-gray-900 capitalize">{group.name}</span>
+                      {group.entries.length > 1 && (
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-md font-medium">
+                          {group.entries.length} batches
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium ${status.color}`}>
-                        {status.icon} {status.label}
+                      <span className="font-bold text-gray-800">{group.totalQty}</span>
+                      <span className="text-gray-500 ml-1 text-sm">{group.unit}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="font-semibold text-green-700">{group.safeQty}</span>
+                      <span className="text-gray-400 ml-1 text-sm">{group.unit}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      {(group.expiringQty > 0 || group.expiredQty > 0) ? (
+                        <div className="space-y-0.5">
+                          {group.expiringQty > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-700">
+                              ⏰ {group.expiringQty} {group.unit} soon
+                            </span>
+                          )}
+                          {group.expiredQty > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 text-red-700">
+                              ❌ {group.expiredQty} {group.unit} expired
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium ${statusColor}`}>
+                        {statusIcon} {statusLabel}
                       </span>
                     </td>
                     <td className="px-5 py-4 text-right">
-                      <button onClick={() => handleEdit(item)} className="text-xs text-green-600 hover:text-green-700 font-medium mr-3">Edit</button>
-                      <button onClick={() => handleDelete(item.id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                      {group.entries.length === 1 ? (
+                        <>
+                          <button onClick={() => handleEdit(group.entries[0])} className="text-xs text-green-600 hover:text-green-700 font-medium mr-3">Edit</button>
+                          <button onClick={() => handleDelete(group.entries[0].id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                        </>
+                      ) : (
+                        <div className="space-y-1">
+                          {group.entries.map((entry, i) => {
+                            const daysLeft = entry.expirationDate
+                              ? Math.ceil((new Date(entry.expirationDate).getTime() - Date.now()) / 86400000)
+                              : null;
+                            return (
+                              <div key={entry.id} className="flex items-center justify-end gap-2">
+                                <span className="text-[10px] text-gray-400">
+                                  {entry.quantity}{entry.unit}
+                                  {daysLeft !== null && (
+                                    <span className={`ml-1 ${daysLeft <= 0 ? 'text-red-500' : daysLeft <= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+                                      ({daysLeft <= 0 ? 'exp' : `${daysLeft}d`})
+                                    </span>
+                                  )}
+                                </span>
+                                <button onClick={() => handleEdit(entry)} className="text-[10px] text-green-600 hover:text-green-700 font-medium">✏️</button>
+                                <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-500 hover:text-red-700 font-medium">🗑️</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
