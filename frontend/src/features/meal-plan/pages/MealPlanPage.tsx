@@ -79,34 +79,45 @@ export default function MealPlanPage() {
   // Check if date is BEFORE today (fully locked — not even today)
   const isBeforeToday = (date: string): boolean => date < todayStr;
 
-  // Get available leftovers with remaining servings
-  // A leftover SOURCE = past/current meal marked as isLeftover
-  // A leftover CONSUMER = future entry with same recipeId AND isLeftover flag (was added from leftover)
-  const availableLeftovers = entries.filter(e => {
-    if (!(e as any).isLeftover) return false;
-    // Must be a past/current meal (source of leftover)
-    const entryDate = e.planDate.split('T')[0];
-    if (entryDate > todayStr) return false; // future entries can't be leftover sources
-    const expiry = (e as any).leftoverExpiryDate;
-    if (expiry) {
-      const expiryDate = expiry.split('T')[0];
-      if (expiryDate < todayStr) return false; // expired leftover
-    }
-    return true;
-  }).map(e => {
-    const sourceDate = e.planDate.split('T')[0];
-    // Only count FUTURE entries that have isLeftover=true and same recipeId
-    // These are the ones explicitly added as "using leftover"
-    // Regular meals with same recipe should NOT count against leftover balance
-    const usedServings = entries.filter(
-      f => f.recipeId === e.recipeId 
-        && f.id !== e.id 
-        && (f as any).isLeftover === true
-        && f.planDate.split('T')[0] > sourceDate
-    ).reduce((sum, f) => sum + f.servings, 0);
-    const remaining = Math.max(0, e.servings - usedServings);
-    return { ...e, remainingServings: remaining };
-  }).filter(e => e.remainingServings > 0);
+  // Get available leftovers — consolidated by recipeId (no duplicates)
+  // A leftover SOURCE = past/current meal marked as isLeftover (not expired)
+  // A leftover CONSUMER = future entry with same recipeId AND isLeftover flag
+  const availableLeftovers = (() => {
+    // Step 1: find all leftover sources (past meals marked as leftover)
+    const sources = entries.filter(e => {
+      if (!(e as any).isLeftover) return false;
+      const entryDate = e.planDate.split('T')[0];
+      if (entryDate > todayStr) return false; // future entries cant be sources
+      const expiry = (e as any).leftoverExpiryDate;
+      if (expiry) {
+        const expiryDate = expiry.split('T')[0];
+        if (expiryDate < todayStr) return false; // expired
+      }
+      return true;
+    });
+
+    // Step 2: consolidate by recipeId (same recipe marked leftover twice = combine servings)
+    const byRecipe: Record<string, { totalServings: number; entry: typeof sources[0] }> = {};
+    sources.forEach(e => {
+      if (!byRecipe[e.recipeId]) {
+        byRecipe[e.recipeId] = { totalServings: e.servings, entry: e };
+      } else {
+        byRecipe[e.recipeId].totalServings += e.servings;
+      }
+    });
+
+    // Step 3: subtract used servings (future entries with isLeftover=true and same recipeId)
+    return Object.values(byRecipe).map(({ totalServings, entry }) => {
+      const usedServings = entries.filter(
+        f => f.recipeId === entry.recipeId
+          && f.id !== entry.id
+          && (f as any).isLeftover === true
+          && f.planDate.split('T')[0] > todayStr
+      ).reduce((sum, f) => sum + f.servings, 0);
+      const remaining = Math.max(0, totalServings - usedServings);
+      return { ...entry, remainingServings: remaining };
+    }).filter(e => e.remainingServings > 0);
+  })();
 
   const getEntriesForDaySlot = (date: string, slot: string): MealPlanEntry[] => {
     return entries.filter(e => e.planDate.split('T')[0] === date && e.mealSlot.toLowerCase() === slot.toLowerCase());
@@ -226,7 +237,8 @@ export default function MealPlanPage() {
                               <span className="text-[10px] text-gray-300">+ add</span>
                             </div>
                           ) : (
-                            slotEntries.map(entry => {
+                            <>
+                            {slotEntries.map(entry => {
                               // Determine card style:
                               // - Yellow: marked as leftover SOURCE (past meal marked isLeftover)
                               // - Grey: consumed FROM leftover (future meal with isLeftover flag = used leftover)
@@ -285,7 +297,13 @@ export default function MealPlanPage() {
                                 </div>
                               </div>
                             );
-                            })
+                            })}
+                            {!isBeforeToday(date) && (
+                              <div onClick={() => setShowAddModal({ date, slot })} className="h-6 border border-dashed border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-300 hover:bg-green-50/30 transition-all mt-1">
+                                <span className="text-[9px] text-gray-300">+ add</span>
+                              </div>
+                            )}
+                            </>
                           )}
                         </div>
                       );
