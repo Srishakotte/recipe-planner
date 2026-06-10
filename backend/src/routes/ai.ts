@@ -63,7 +63,7 @@ Keep it under 200 words. Don't be preachy.`;
       return;
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     const aiResponse = data.choices?.[0]?.message?.content || 'No response generated';
 
     res.json({ response: aiResponse, context, model: 'gpt-4o-mini' });
