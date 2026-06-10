@@ -632,6 +632,12 @@ the architecture supports all of this. the engine is pure functions so its easy 
 
 ---
 
+## Demo Video
+
+https://www.youtube.com/watch?v=DkaJRh1jgL8
+
+---
+
 ## AI Used During Development
 
 I used Kiro (AI coding agent) for writing code faster. It helped with boilerplate generation, repetitive UI components, and debugging. 
