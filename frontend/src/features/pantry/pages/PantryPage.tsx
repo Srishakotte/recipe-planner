@@ -67,14 +67,15 @@ export default function PantryPage() {
     resetForm();
   };
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const handleDelete = async (id: string) => {
-    if (window.confirm('Remove from pantry?')) {
-      try {
-        await deleteItem(id).unwrap();
-      } catch (err) {
-        console.error('Delete failed:', err);
-      }
+    try {
+      await deleteItem(id).unwrap();
+    } catch (err) {
+      console.error('Delete failed:', err);
     }
+    setConfirmDeleteId(null);
   };
 
   const filteredItems = (items || []).filter(item => {
@@ -420,8 +421,18 @@ export default function PantryPage() {
                     <td className="px-5 py-4 text-right">
                       {group.entries.length === 1 ? (
                         <>
-                          <button onClick={() => handleEdit(group.entries[0])} className="text-xs text-green-600 hover:text-green-700 font-medium mr-3">Edit</button>
-                          <button onClick={() => handleDelete(group.entries[0].id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                          {confirmDeleteId === group.entries[0].id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <span className="text-xs text-red-600 font-medium">Remove?</span>
+                              <button onClick={() => handleDelete(group.entries[0].id)} className="text-xs px-2 py-1 bg-red-500 text-white rounded-lg font-medium">Yes</button>
+                              <button onClick={() => setConfirmDeleteId(null)} className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded-lg font-medium">No</button>
+                            </span>
+                          ) : (
+                            <>
+                              <button onClick={() => handleEdit(group.entries[0])} className="text-xs text-green-600 hover:text-green-700 font-medium mr-3">Edit</button>
+                              <button onClick={() => setConfirmDeleteId(group.entries[0].id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                            </>
+                          )}
                         </>
                       ) : (
                         <div className="space-y-1">
@@ -439,8 +450,17 @@ export default function PantryPage() {
                                     </span>
                                   )}
                                 </span>
-                                <button onClick={() => handleEdit(entry)} className="text-[10px] text-green-600 hover:text-green-700 font-medium">✏️</button>
-                                <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-500 hover:text-red-700 font-medium">🗑️</button>
+                                {confirmDeleteId === entry.id ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <button onClick={() => handleDelete(entry.id)} className="text-[9px] px-1.5 py-0.5 bg-red-500 text-white rounded font-medium">Yes</button>
+                                    <button onClick={() => setConfirmDeleteId(null)} className="text-[9px] px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded font-medium">No</button>
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button onClick={() => handleEdit(entry)} className="text-[10px] text-green-600 hover:text-green-700 font-medium">✏️</button>
+                                    <button onClick={() => setConfirmDeleteId(entry.id)} className="text-[10px] text-red-500 hover:text-red-700 font-medium">🗑️</button>
+                                  </>
+                                )}
                               </div>
                             );
                           })}

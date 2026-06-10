@@ -3,7 +3,15 @@ import prisma from '../prisma';
 
 const router = Router();
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// gemini-1.5-flash is deprecated (June 2025). Use gemini-2.5-flash or gemini-2.5-flash-lite
+const GEMINI_MODEL = (() => {
+  const envModel = process.env.GEMINI_MODEL;
+  // Override deprecated models automatically
+  if (!envModel || envModel === 'gemini-1.5-flash' || envModel === 'gemini-2.0-flash') {
+    return 'gemini-2.5-flash';
+  }
+  return envModel;
+})();
 
 function getGeminiClient(): any | null {
   const apiKey = process.env.GEMINI_API_KEY;

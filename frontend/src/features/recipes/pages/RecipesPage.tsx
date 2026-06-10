@@ -18,6 +18,7 @@ export default function RecipesPage() {
   const [showAiGenerate, setShowAiGenerate] = useState(false);
   const [aiRecipes, setAiRecipes] = useState<any[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [suggestRecipes] = useAiSuggestRecipesMutation();
 
   const { data: recipes, isLoading } = useGetRecipesQuery(search || undefined);
@@ -29,9 +30,8 @@ export default function RecipesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Delete this recipe?')) {
-      await deleteRecipe(id);
-    }
+    await deleteRecipe(id);
+    setConfirmDeleteId(null);
   };
 
   const handleFormClose = () => {
@@ -218,12 +218,20 @@ export default function RecipesPage() {
                   >
                     ✏️ Edit
                   </button>
-                  <button
-                    onClick={() => handleDelete(recipe.id)}
-                    className="flex-1 px-3 py-2 text-xs font-semibold bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
-                  >
-                    🗑️ Delete
-                  </button>
+                  {confirmDeleteId === recipe.id ? (
+                    <div className="flex-1 flex items-center gap-1">
+                      <span className="text-[10px] text-red-600 font-medium">Sure?</span>
+                      <button onClick={() => handleDelete(recipe.id)} className="px-2 py-1.5 text-[10px] font-bold bg-red-500 text-white rounded-lg">Yes</button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="px-2 py-1.5 text-[10px] font-bold bg-gray-200 text-gray-700 rounded-lg">No</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(recipe.id)}
+                      className="flex-1 px-3 py-2 text-xs font-semibold bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
+                    >
+                      🗑️ Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
