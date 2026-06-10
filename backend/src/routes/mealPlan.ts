@@ -44,14 +44,23 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { recipeId, planDate, mealSlot, servings, isLeftover, leftoverExpiryDate } = req.body;
+    const data: any = {};
+    if (recipeId) data.recipeId = recipeId;
+    if (planDate) data.planDate = new Date(planDate);
+    if (mealSlot) data.mealSlot = mealSlot;
+    if (servings !== undefined && servings !== null) data.servings = servings;
+    if (isLeftover !== undefined) data.isLeftover = isLeftover;
+    // Handle leftoverExpiryDate: null means clear it, string means set it
+    if (leftoverExpiryDate !== undefined) {
+      data.leftoverExpiryDate = leftoverExpiryDate ? new Date(leftoverExpiryDate) : null;
+    }
+    // If unmarking leftover, also clear the expiry date
+    if (isLeftover === false) {
+      data.leftoverExpiryDate = null;
+    }
     const entry = await prisma.mealPlanEntry.update({
       where: { id: req.params.id },
-      data: {
-        ...(recipeId && { recipeId }), ...(planDate && { planDate: new Date(planDate) }),
-        ...(mealSlot && { mealSlot }), ...(servings && { servings }),
-        ...(isLeftover !== undefined && { isLeftover }),
-        ...(leftoverExpiryDate !== undefined && { leftoverExpiryDate: leftoverExpiryDate ? new Date(leftoverExpiryDate) : new Date(Date.now() + 86400000) }),
-      },
+      data,
       include: { recipe: { include: { ingredients: true } } },
     });
     res.json(entry);

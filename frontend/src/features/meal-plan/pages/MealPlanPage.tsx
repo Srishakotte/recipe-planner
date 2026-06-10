@@ -80,8 +80,8 @@ export default function MealPlanPage() {
   const isBeforeToday = (date: string): boolean => date < todayStr;
 
   // Get available leftovers with remaining servings
-  // A leftover SOURCE = past/current meal marked as isLeftover with a leftoverExpiryDate
-  // A leftover CONSUMER = any future entry with same recipeId added AFTER the source date
+  // A leftover SOURCE = past/current meal marked as isLeftover
+  // A leftover CONSUMER = future entry with same recipeId AND isLeftover flag (was added from leftover)
   const availableLeftovers = entries.filter(e => {
     if (!(e as any).isLeftover) return false;
     // Must be a past/current meal (source of leftover)
@@ -90,15 +90,19 @@ export default function MealPlanPage() {
     const expiry = (e as any).leftoverExpiryDate;
     if (expiry) {
       const expiryDate = expiry.split('T')[0];
-      if (expiryDate < todayStr) return false;
+      if (expiryDate < todayStr) return false; // expired leftover
     }
     return true;
   }).map(e => {
     const sourceDate = e.planDate.split('T')[0];
-    // Calculate used servings: ALL entries (leftover-flagged or not) with same recipeId
-    // that are placed on a date AFTER the source leftover date (they consumed from this leftover)
+    // Only count FUTURE entries that have isLeftover=true and same recipeId
+    // These are the ones explicitly added as "using leftover"
+    // Regular meals with same recipe should NOT count against leftover balance
     const usedServings = entries.filter(
-      f => f.recipeId === e.recipeId && f.id !== e.id && f.planDate.split('T')[0] > sourceDate
+      f => f.recipeId === e.recipeId 
+        && f.id !== e.id 
+        && (f as any).isLeftover === true
+        && f.planDate.split('T')[0] > sourceDate
     ).reduce((sum, f) => sum + f.servings, 0);
     const remaining = Math.max(0, e.servings - usedServings);
     return { ...e, remainingServings: remaining };
@@ -255,10 +259,14 @@ export default function MealPlanPage() {
                                   )}
                                   <div className="flex items-center gap-1">
                                     {canBeLeftover && (
-                                      <button onClick={() => {
+                                      <button onClick={async () => {
                                         if ((entry as any).isLeftover) {
-                                          // Directly unmark leftover
-                                          updateEntry({ id: entry.id, data: { isLeftover: false, leftoverExpiryDate: null } as any });
+                                          // Directly unmark leftover — removes from available leftovers
+                                          try {
+                                            await updateEntry({ id: entry.id, data: { isLeftover: false, leftoverExpiryDate: null } as any }).unwrap();
+                                          } catch (err) {
+                                            console.error('Failed to unmark leftover:', err);
+                                          }
                                         } else {
                                           // Open modal to mark as leftover with expiry
                                           setShowLeftoverModal({ entryId: entry.id, recipeName: entry.recipe?.name || 'Meal' });
