@@ -295,7 +295,6 @@ export default function HomePage() {
             )}
           </div>
         </div>
-        </div>
 
         {/* Right: Grocery Summary Panel */}
         <div className="space-y-4">
@@ -377,6 +376,7 @@ export default function HomePage() {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
