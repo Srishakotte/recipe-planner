@@ -32,6 +32,7 @@ export default function RecipeForm({ recipe, onClose }: RecipeFormProps) {
 
   const [createRecipe, { isLoading: isCreating }] = useCreateRecipeMutation();
   const [updateRecipe, { isLoading: isUpdating }] = useUpdateRecipeMutation();
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const isEditing = !!recipe;
   const isSaving = isCreating || isUpdating;
@@ -61,8 +62,10 @@ export default function RecipeForm({ recipe, onClose }: RecipeFormProps) {
         await createRecipe(data).unwrap();
       }
       onClose();
-    } catch (err) {
-      console.error('Failed to save recipe:', err);
+    } catch (err: any) {
+      const msg = err?.data?.error || 'Failed to save recipe';
+      setSaveError(msg);
+      setTimeout(() => setSaveError(null), 5000);
     }
   };
 
@@ -81,6 +84,12 @@ export default function RecipeForm({ recipe, onClose }: RecipeFormProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {saveError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center justify-between">
+            <p className="text-sm text-red-700 font-medium">{saveError}</p>
+            <button type="button" onClick={() => setSaveError(null)} className="text-red-400 hover:text-red-600">x</button>
+          </div>
+        )}
         <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Recipe Name</label>

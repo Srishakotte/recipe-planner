@@ -34,6 +34,11 @@ router.post('/', async (req: Request, res: Response) => {
     if (!name || !ingredients || ingredients.length === 0) {
       res.status(400).json({ error: 'Name and at least one ingredient required' }); return;
     }
+    // Check for duplicate recipe name
+    const existing = await prisma.recipe.findFirst({ where: { name: { equals: name.trim() } } });
+    if (existing) {
+      res.status(409).json({ error: `A recipe named "${name.trim()}" already exists. Please use a different name.` }); return;
+    }
     const recipe = await prisma.recipe.create({
       data: {
         name, defaultServings: defaultServings || 2, description: description || null,
