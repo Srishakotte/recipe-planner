@@ -200,7 +200,7 @@ export default function HomePage() {
                     <div className={`w-12 h-12 mx-auto mt-2 rounded-xl flex items-center justify-center text-xl ${
                       meals.length > 0 ? 'bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100' : 'bg-gray-50'
                     }`}>
-                      {meals.length > 0 ? '🍽️' : <span className="text-gray-300 text-lg">+</span>}
+                      {meals.length > 0 ? '🍽️' : <span className="text-gray-200 text-sm">No meals</span>}
                     </div>
                     <p className="mt-2 text-xs text-gray-600 font-medium">
                       {meals.length > 0 ? `${meals.length} meal${meals.length > 1 ? 's' : ''}` : 'Empty'}
