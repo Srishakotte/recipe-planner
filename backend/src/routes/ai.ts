@@ -104,6 +104,75 @@ router.post('/suggest-recipes', async (req: Request, res: Response) => {
 router.post('/estimate-nutrition', async (req: Request, res: Response) => {
   try {
     const { recipeName, ingredients } = req.body;
+
+    // If called with 'weekly-plan', fetch actual meal plan data for the current week
+    if (recipeName === 'weekly-plan') {
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+      monday.setHours(0, 0, 0, 0);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 7);
+
+      const entries = await prisma.mealPlanEntry.findMany({
+        where: { planDate: { gte: monday, lt: sunday } },
+        include: { recipe: { include: { ingredients: true } } },
+        orderBy: { planDate: 'asc' },
+      });
+
+      if (entries.length === 0) {
+        res.json({ nutrition: { calories: 0, protein: 0, carbs: 0, fats: 0 }, source: 'empty' });
+        return;
+      }
+
+      // Build per-day meal descriptions for AI
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const dayMeals: Record<string, string[]> = {};
+      entries.forEach(e => {
+        const date = new Date(e.planDate);
+        const dayIdx = (date.getDay() + 6) % 7; // Mon=0
+        const dayName = days[dayIdx];
+        if (!dayMeals[dayName]) dayMeals[dayName] = [];
+        const ings = e.recipe.ingredients.map((i: any) => `${i.quantity * (e.servings / e.recipe.defaultServings)} ${i.unit} ${i.name}`).join(', ');
+        dayMeals[dayName].push(`${e.mealSlot}: ${e.recipe.name} (${e.servings} servings) - ingredients: ${ings}`);
+      });
+
+      const mealDescription = Object.entries(dayMeals)
+        .map(([day, meals]) => `${day}: ${meals.join(' | ')}`)
+        .join('\n');
+
+      const prompt = `Estimate daily nutrition (calories, protein in grams, carbs in grams, fats in grams) for each day of this weekly meal plan. Be realistic based on the ingredients and portions:\n\n${mealDescription}\n\nReturn ONLY valid JSON array, no other text: [{"day":"Monday","calories":1850,"protein":95,"carbs":210,"fats":62},{"day":"Tuesday","calories":2100,"protein":110,"carbs":240,"fats":70}]`;
+
+      const response = await callAI(prompt);
+      if (response) {
+        try {
+          const jsonMatch = response.match(/\[[\s\S]*\]/);
+          const nutrition = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+          if (nutrition && nutrition.length > 0) {
+            res.json({ nutrition, source: 'gemini' });
+            return;
+          }
+        } catch (e) { console.error('Parse error:', e); }
+      }
+
+      // Fallback: estimate based on number of meals per day
+      const fallback = days.map(day => {
+        const meals = dayMeals[day] || [];
+        const mealCount = meals.length;
+        return {
+          day,
+          calories: mealCount * 550 + Math.round(Math.random() * 200),
+          protein: mealCount * 28 + Math.round(Math.random() * 15),
+          carbs: mealCount * 65 + Math.round(Math.random() * 30),
+          fats: mealCount * 20 + Math.round(Math.random() * 10),
+        };
+      });
+      res.json({ nutrition: fallback, source: 'fallback' });
+      return;
+    }
+
+    // Single recipe nutrition estimation
     const list = ingredients?.map((i: any) => `${i.quantity} ${i.unit} ${i.name}`).join(', ') || recipeName;
     const prompt = `Estimate the nutrition for this meal: ${recipeName} with ingredients: ${list}. Return ONLY valid JSON, no other text: {"calories":450,"protein":25,"carbs":55,"fats":18}`;
     const response = await callAI(prompt);
