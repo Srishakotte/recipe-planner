@@ -123,38 +123,11 @@ export default function GroceryListPage() {
         </div>
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
           <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center mb-2"><span className="text-sm">💰</span></div>
-          <p className="text-2xl font-bold text-purple-600">~${needToBuy.length * 3}</p>
+          <p className="text-2xl font-bold text-purple-600">~₹{needToBuy.length * 3}</p>
           <p className="text-xs text-gray-500">Est. Cost</p>
         </div>
       </div>
 
-      {/* AI Cost Optimizer */}
-      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-100">
-        <div className="flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
-            <span className="text-xl">🤖</span>
-          </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-gray-800 text-sm">AI Shopping Insights</h3>
-            <p className="text-sm text-gray-600 mt-1.5">
-              {inPantry.length > 0
-                ? `You already have ${inPantry.length} items in your pantry. No need to purchase those!`
-                : 'Generate a grocery list to see cost-saving insights.'}
-            </p>
-            {needToBuy.length > 0 && (
-              <div className="flex gap-2 mt-3">
-                <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-green-700 border border-green-200">
-                  💡 Save ~${Math.round(inPantry.length * 2.5)} with pantry items
-                </span>
-                <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-blue-700 border border-blue-200">
-                  🔄 {items.filter(i => i.warnings && (i.warnings as any[]).length > 0).length} substitution options
-                </span>
-              </div>
-            )}
-            <p className="text-xs text-green-500 mt-2 font-medium">✨ AI-powered • Connect Gemini API for smarter insights</p>
-          </div>
-        </div>
-      </div>
 
       {/* Tabs + Search */}
       <div className="flex items-center gap-4">

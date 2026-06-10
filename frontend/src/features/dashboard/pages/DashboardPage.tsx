@@ -105,7 +105,6 @@ export default function DashboardPage() {
               <Area type="monotone" dataKey="calories" stroke="#10b981" strokeWidth={2.5} fill="url(#calorieGrad)" />
             </AreaChart>
           </ResponsiveContainer>
-          <p className="text-xs text-green-500 mt-2 font-medium">✨ AI estimates based on meal ingredients</p>
         </div>
 
         {/* Protein Trend */}
@@ -185,21 +184,4 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Cost & Summary */}
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl p-6 border border-purple-100">
-          <h3 className="font-bold text-gray-800 text-sm mb-2">💰 Weekly Cost Estimate</h3>
-          <p className="text-3xl font-bold text-purple-700">${(data?.overview.groceryListItems || 0) * 3}</p>
-          <p className="text-xs text-purple-500 mt-1">Based on average ingredient prices</p>
-          <p className="text-xs text-purple-400 mt-2">✨ AI-powered cost estimation • Connect Gemini API for accurate pricing</p>
-        </div>
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-100">
-          <h3 className="font-bold text-gray-800 text-sm mb-2">🏠 Pantry Savings</h3>
-          <p className="text-3xl font-bold text-green-700">${(data?.overview.totalPantryItems || 0) * 2}</p>
-          <p className="text-xs text-green-500 mt-1">Saved by using pantry items this week</p>
-          <p className="text-xs text-green-400 mt-2">Based on {data?.overview.totalPantryItems || 0} pantry items already owned</p>
-        </div>
-      </div>
-    </div>
-  );
 }

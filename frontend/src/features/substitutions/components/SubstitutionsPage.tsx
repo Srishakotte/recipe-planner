@@ -117,7 +117,6 @@ export default function SubstitutionsPage() {
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-purple-500 mt-3 font-medium">✨ AI-powered • Connect Gemini API to activate recipe fixing</p>
             </div>
           </div>
         </div>

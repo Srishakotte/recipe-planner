@@ -155,10 +155,8 @@ export default function HomePage() {
                     📖 Generate Recipe
                   </Link>
                   <Link to="/grocery-list" className="px-3 py-1.5 bg-white rounded-lg text-xs font-medium text-amber-700 border border-amber-200 hover:bg-amber-50 transition-colors">
-                    🛒 Grocery List
                   </Link>
                 </div>
-                <p className="text-xs text-green-500 mt-2 font-medium">✨ AI-powered • Connect Gemini API to activate smart suggestions</p>
               </div>
             </div>
           </div>
@@ -193,7 +191,7 @@ export default function HomePage() {
                   </div>
                   <div className="flex items-center justify-between py-1.5 pt-2 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-700">Est. Cost</span>
-                    <span className="text-sm font-bold text-gray-900">~${needToBuy.length * 3}</span>
+                    <span className="text-sm font-bold text-gray-900">~₹{needToBuy.length * 3}</span>
                   </div>
                 </div>
                 {/* Progress */}
