@@ -26,6 +26,9 @@ export interface MealPlanEntry {
   planDate: string;
   mealSlot: string;
   servings: number;
+  isLeftover: boolean;
+  leftoverServings?: number | null;
+  leftoverExpiresAt?: string | null;
   recipe: Recipe;
 }
 
@@ -208,6 +211,22 @@ export const api = createApi({
       query: (id) => ({ url: `/substitutions/constraints/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Constraints', 'GroceryList'],
     }),
+
+    // Reset
+    resetAppData: builder.mutation<{ message: string }, { reseed?: boolean } | void>({
+      query: (body) => ({ url: '/reset', method: 'POST', body: body || {} }),
+      invalidatesTags: ['Recipes', 'MealPlan', 'Pantry', 'GroceryList', 'Substitutions', 'Constraints'],
+    }),
+
+    // Leftovers
+    markAsLeftover: builder.mutation<MealPlanEntry, { id: string; leftoverServings?: number; leftoverExpiresAt?: string }>({
+      query: ({ id, ...body }) => ({ url: `/meal-plans/${id}/leftover`, method: 'PATCH', body }),
+      invalidatesTags: ['MealPlan'],
+    }),
+    consumeLeftover: builder.mutation<MealPlanEntry, { id: string; servingsUsed?: number }>({
+      query: ({ id, servingsUsed }) => ({ url: `/meal-plans/${id}/consume-leftover`, method: 'PATCH', body: { servingsUsed } }),
+      invalidatesTags: ['MealPlan'],
+    }),
   }),
 });
 
@@ -238,4 +257,7 @@ export const {
   useGetConstraintsQuery,
   useCreateConstraintMutation,
   useDeleteConstraintMutation,
+  useResetAppDataMutation,
+  useMarkAsLeftoverMutation,
+  useConsumeLeftoverMutation,
 } = api;
