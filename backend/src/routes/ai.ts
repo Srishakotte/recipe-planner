@@ -21,7 +21,7 @@ function getGeminiClient(): any | null {
 async function callAI(prompt: string): Promise<string> {
   const ai = getGeminiClient();
   if (!ai) {
-    console.log('No GEMINI_API_KEY or @google/genai not installed, using fallback');
+    console.log('No GEMINI_API_KEY, using fallback');
     return '';
   }
 
@@ -112,15 +112,15 @@ router.post('/estimate-cost', async (req: Request, res: Response) => {
   try {
     const groceryGen = await prisma.groceryGeneration.findFirst({ orderBy: { version: 'desc' }, include: { items: true } });
     const items = groceryGen?.items.filter(i => !i.isAlreadyHave && !i.isChecked && i.computedQty > 0) || [];
-    if (items.length === 0) { res.json({ totalCost: 0, items: [], source: 'empty' }); return; }
+    if (items.length === 0) { res.json({ totalCost: 0, breakdown: [], source: 'empty' }); return; }
     const itemList = items.map(i => `${i.computedQty} ${i.unit} ${i.ingredientName}`).join(', ');
-    const prompt = `Estimate the total USD grocery cost for: ${itemList}. Return ONLY valid JSON: {"totalCost":25.50,"breakdown":[{"item":"chicken","cost":8}]}`;
+    const prompt = `Estimate the total Indian Rupees (INR ₹) grocery cost for these items by checking average prices on Amazon, Flipkart, Zepto, Instamart, BigBasket and giving the average: ${itemList}. Return ONLY valid JSON with no extra text: {"totalCost":780,"currency":"INR","breakdown":[{"item":"chicken breast","cost":250,"unit":"500g"},{"item":"onion","cost":40,"unit":"1kg"}]}`;
     const response = await callAI(prompt);
     try {
       const jsonMatch = response.match(/\{[\s\S]*\}/);
-      const cost = jsonMatch ? JSON.parse(jsonMatch[0]) : { totalCost: items.length * 3 };
+      const cost = jsonMatch ? JSON.parse(jsonMatch[0]) : { totalCost: items.length * 60, currency: 'INR' };
       res.json({ ...cost, source: response ? 'gemini' : 'fallback' });
-    } catch { res.json({ totalCost: items.length * 3, source: 'fallback' }); }
+    } catch { res.json({ totalCost: items.length * 60, currency: 'INR', source: 'fallback' }); }
   } catch (error) { res.status(500).json({ error: 'Failed' }); }
 });
 
