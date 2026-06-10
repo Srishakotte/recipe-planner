@@ -39,6 +39,7 @@ export default function MealPlanPage() {
   const [selectedRecipeId, setSelectedRecipeId] = useState('');
   const [servings, setServings] = useState(2);
   const [useLeftover, setUseLeftover] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
 
   const { data: entries = [], isLoading } = useGetMealPlanQuery(currentWeekStart);
   const { data: recipes = [] } = useGetRecipesQuery();
@@ -199,6 +200,12 @@ export default function MealPlanPage() {
       </div>
 
       {/* Week Navigation */}
+      {notification && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center justify-between animate-scale-in">
+          <p className="text-sm text-red-700 font-medium">{notification}</p>
+          <button onClick={() => setNotification(null)} className="text-red-400 hover:text-red-600 text-sm font-bold ml-3">x</button>
+        </div>
+      )}
       <div className="flex items-center justify-center gap-4">
         <button onClick={() => navigateWeek(-1)} className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 transition-all">← Prev</button>
         <div className="px-5 py-2 bg-green-50 border border-green-200 rounded-xl">
@@ -287,7 +294,8 @@ export default function MealPlanPage() {
                                               && f.planDate.split('T')[0] >= todayStr
                                           );
                                           if (consumers.length > 0) {
-                                            alert(`Can't unmark: ${consumers.length} future meal(s) are using this leftover. Remove them first.`);
+                                            setNotification(`Cannot unmark: ${consumers.length} future meal(s) are using this leftover. Remove them first.`);
+                                            setTimeout(() => setNotification(null), 5000);
                                             return;
                                           }
                                           try {
