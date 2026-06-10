@@ -4,6 +4,20 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding database...');
 
+  // Clear existing data first (handles re-seeding without unique constraint errors)
+  await prisma.groceryItem.deleteMany();
+  await prisma.groceryGeneration.deleteMany();
+  await prisma.mealPlanEntry.deleteMany();
+  await prisma.ingredient.deleteMany();
+  await prisma.recipe.deleteMany();
+  await prisma.pantryItem.deleteMany();
+  await prisma.substitution.deleteMany();
+  await prisma.userConstraint.deleteMany();
+  await prisma.ingredientSynonym.deleteMany();
+  await prisma.unitConversion.deleteMany();
+  await prisma.ingredientDensity.deleteMany();
+  console.log('Cleared existing data...');
+
   await prisma.unitConversion.createMany({
     data: [
       { fromUnit: 'tsp', toUnit: 'ml', multiplier: 5, conversionType: 'volume' },
