@@ -80,8 +80,13 @@ export default function MealPlanPage() {
   const isBeforeToday = (date: string): boolean => date < todayStr;
 
   // Get available leftovers with remaining servings
+  // A leftover SOURCE = past/current meal marked as isLeftover with a leftoverExpiryDate
+  // A leftover CONSUMER = any future entry with same recipeId added AFTER the source date
   const availableLeftovers = entries.filter(e => {
     if (!(e as any).isLeftover) return false;
+    // Must be a past/current meal (source of leftover)
+    const entryDate = e.planDate.split('T')[0];
+    if (entryDate > todayStr) return false; // future entries can't be leftover sources
     const expiry = (e as any).leftoverExpiryDate;
     if (expiry) {
       const expiryDate = expiry.split('T')[0];
@@ -89,9 +94,11 @@ export default function MealPlanPage() {
     }
     return true;
   }).map(e => {
-    // Calculate used servings (future meals using same recipe that are marked as using leftover)
+    const sourceDate = e.planDate.split('T')[0];
+    // Calculate used servings: ALL entries (leftover-flagged or not) with same recipeId
+    // that are placed on a date AFTER the source leftover date (they consumed from this leftover)
     const usedServings = entries.filter(
-      f => f.recipeId === e.recipeId && f.id !== e.id && !(f as any).isLeftover && f.planDate.split('T')[0] > e.planDate.split('T')[0]
+      f => f.recipeId === e.recipeId && f.id !== e.id && f.planDate.split('T')[0] > sourceDate
     ).reduce((sum, f) => sum + f.servings, 0);
     const remaining = Math.max(0, e.servings - usedServings);
     return { ...e, remainingServings: remaining };

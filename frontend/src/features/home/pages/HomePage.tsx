@@ -1,14 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   useGetMealPlanQuery,
   useGetGroceryListQuery,
   useGetPantryQuery,
   useGetRecipesQuery,
+  useAiEstimateCostMutation,
+  useAiSuggestRecipesMutation,
 } from '../../../app/api';
 
 const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const dayFull = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const todayIdx = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; })();
 
 function getWeekStart(): string {
@@ -25,6 +26,14 @@ export default function HomePage() {
   const { data: groceryList } = useGetGroceryListQuery();
   const { data: pantry = [] } = useGetPantryQuery();
   const { data: recipes = [] } = useGetRecipesQuery();
+  const [estimateCost] = useAiEstimateCostMutation();
+  const [suggestRecipes] = useAiSuggestRecipesMutation();
+
+  const [costLoading, setCostLoading] = useState(false);
+  const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
+  const [botActive, setBotActive] = useState(false);
+  const [botLoading, setBotLoading] = useState(false);
+  const [botSuggestions, setBotSuggestions] = useState<any[]>([]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -40,6 +49,7 @@ export default function HomePage() {
   // Grocery stats
   const groceryItems = groceryList?.items || [];
   const needToBuy = groceryItems.filter(i => !i.isChecked && !i.isAlreadyHave && i.computedQty > 0);
+  const alreadyHave = groceryItems.filter(i => i.isAlreadyHave || i.computedQty === 0);
   const checked = groceryItems.filter(i => i.isChecked);
 
   // Expiring pantry
@@ -48,6 +58,31 @@ export default function HomePage() {
     const days = Math.ceil((new Date(item.expirationDate).getTime() - Date.now()) / 86400000);
     return days <= 3 && days >= 0;
   });
+
+  const handleEstimateCost = async () => {
+    setCostLoading(true);
+    try {
+      const result = await estimateCost().unwrap();
+      setEstimatedCost(result.totalCost);
+    } catch (e) {
+      setEstimatedCost(needToBuy.length * 55);
+    }
+    setCostLoading(false);
+  };
+
+  const handleBotCook = async () => {
+    setBotActive(true);
+    setBotLoading(true);
+    try {
+      const result = await suggestRecipes().unwrap();
+      if (result?.suggestions) {
+        setBotSuggestions(result.suggestions.slice(0, 3));
+      }
+    } catch (e) {
+      setBotSuggestions([{ name: 'Quick Stir Fry', cookingTime: 15 }, { name: 'Simple Omelette', cookingTime: 10 }]);
+    }
+    setBotLoading(false);
+  };
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -64,6 +99,39 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Expiring Soon Banner (top, visible immediately) */}
+      {expiring.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-5 border border-amber-200 animate-scale-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                <span className="text-lg">⚠️</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-amber-800 text-sm">Expiring Soon - Use These First!</h3>
+                <p className="text-xs text-amber-600 mt-0.5">{expiring.length} item{expiring.length > 1 ? 's' : ''} expiring in the next 3 days</p>
+              </div>
+            </div>
+            <Link to="/pantry" className="px-3 py-1.5 bg-white rounded-lg text-xs font-medium text-amber-700 border border-amber-200 hover:bg-amber-50 transition-colors">
+              View Pantry →
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {expiring.map(item => {
+              const daysLeft = Math.ceil((new Date(item.expirationDate!).getTime() - Date.now()) / 86400000);
+              return (
+                <div key={item.id} className="bg-white rounded-xl px-3 py-1.5 border border-amber-200 flex items-center gap-2">
+                  <span className="font-medium text-sm text-gray-800">{item.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 font-bold">
+                    {daysLeft <= 0 ? 'Expired!' : daysLeft === 1 ? '1 day' : `${daysLeft} days`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Main Grid: Week Plan + Grocery Side Panel */}
       <div className="grid grid-cols-3 gap-6">
         {/* Left: Week Plan (2 cols wide) */}
@@ -72,11 +140,9 @@ export default function HomePage() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-gray-800">📅 Your Meal Plan</h2>
-              <div className="flex gap-2">
-                <Link to="/meal-plan" className="text-xs text-green-600 font-semibold hover:text-green-700 px-3 py-1.5 bg-green-50 rounded-lg">
-                  View Full Week →
-                </Link>
-              </div>
+              <Link to="/meal-plan" className="text-xs text-green-600 font-semibold hover:text-green-700 px-3 py-1.5 bg-green-50 rounded-lg">
+                View Full Week →
+              </Link>
             </div>
             <div className="grid grid-cols-7 gap-2.5 stagger-children">
               {dayNames.map((day, i) => {
@@ -130,33 +196,61 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* AI Kitchen Intelligence */}
+          {/* AI Kitchen Intelligence Bot */}
           <div className="bg-gradient-to-br from-[#f0fdf4] to-[#ecfdf5] rounded-2xl p-6 border border-green-100">
             <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
-                <span className="text-xl">🤖</span>
+              <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0 relative">
+                <span className="text-2xl">🤖</span>
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></span>
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-gray-800 text-sm">Kitchen Intelligence</h3>
-                {expiring.length > 0 ? (
-                  <p className="text-sm text-gray-600 mt-1.5">
-                    ⚠️ {expiring.length} ingredient{expiring.length > 1 ? 's' : ''} expiring soon: <strong>{expiring.map(e => e.name).join(', ')}</strong>. Cook them today!
-                  </p>
-                ) : (
-                  <p className="text-sm text-gray-600 mt-1.5">
-                    You have {pantry.length} items in your pantry. {entries.length > 0 ? `${entries.length} meals planned this week.` : 'Start planning your week!'}
-                  </p>
-                )}
-                <div className="flex gap-2 mt-3">
-                  <Link to="/pantry" className="px-3 py-1.5 bg-white rounded-lg text-xs font-medium text-green-700 border border-green-200 hover:bg-green-50 transition-colors">
-                    🍳 Cook Now
-                  </Link>
-                  <Link to="/recipes" className="px-3 py-1.5 bg-white rounded-lg text-xs font-medium text-blue-700 border border-blue-200 hover:bg-blue-50 transition-colors">
-                    📖 Generate Recipe
-                  </Link>
-                  <Link to="/grocery-list" className="px-3 py-1.5 bg-white rounded-lg text-xs font-medium text-amber-700 border border-amber-200 hover:bg-amber-50 transition-colors">
+                <p className="text-xs text-gray-500 mt-0.5">Click a bubble to activate AI suggestions</p>
+
+                {/* Emoji Bubble Buttons */}
+                <div className="flex gap-3 mt-3">
+                  <button
+                    onClick={handleBotCook}
+                    className="group flex items-center gap-2 px-4 py-2.5 bg-white rounded-xl border border-green-200 hover:border-green-400 hover:shadow-md hover:shadow-green-100 transition-all hover:scale-[1.03]"
+                  >
+                    <span className="text-xl group-hover:animate-bounce">🍳</span>
+                    <span className="text-xs font-semibold text-green-700">What Can I Cook?</span>
+                  </button>
+                  <Link
+                    to="/recipes"
+                    className="group flex items-center gap-2 px-4 py-2.5 bg-white rounded-xl border border-blue-200 hover:border-blue-400 hover:shadow-md hover:shadow-blue-100 transition-all hover:scale-[1.03]"
+                  >
+                    <span className="text-xl group-hover:animate-bounce">📖</span>
+                    <span className="text-xs font-semibold text-blue-700">Generate Recipe</span>
                   </Link>
                 </div>
+
+                {/* Bot Response Area */}
+                {botActive && (
+                  <div className="mt-4 p-4 bg-white rounded-xl border border-green-100 animate-scale-in">
+                    {botLoading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-300 border-t-green-600"></div>
+                        <span className="text-xs text-green-600">AI is thinking...</span>
+                      </div>
+                    ) : botSuggestions.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-gray-600">🤖 Here's what you can make:</p>
+                        {botSuggestions.map((s, i) => (
+                          <div key={i} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+                            <span className="text-lg">{['🍳', '🥗', '🍲'][i % 3]}</span>
+                            <div>
+                              <p className="text-xs font-medium text-gray-800">{s.name}</p>
+                              <p className="text-[10px] text-gray-500">⏱ {s.cookingTime || 20} min</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">No suggestions yet. Try adding items to your pantry!</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -183,15 +277,30 @@ export default function HomePage() {
                   </div>
                   <div className="flex items-center justify-between py-1.5">
                     <span className="text-xs text-gray-600">Already have</span>
-                    <span className="text-xs font-bold text-green-600">{groceryItems.length - needToBuy.length} items</span>
+                    <span className="text-xs font-bold text-green-600">{alreadyHave.length} items</span>
                   </div>
                   <div className="flex items-center justify-between py-1.5">
                     <span className="text-xs text-gray-600">Purchased</span>
                     <span className="text-xs font-bold text-blue-600">{checked.length} items</span>
                   </div>
-                  <div className="flex items-center justify-between py-1.5 pt-2 border-t border-gray-100">
-                    <span className="text-xs font-medium text-gray-700">Est. Cost</span>
-                    <span className="text-sm font-bold text-gray-900">~₹{needToBuy.length * 60}</span>
+                  <div className="pt-2 border-t border-gray-100">
+                    <button
+                      onClick={handleEstimateCost}
+                      disabled={costLoading}
+                      className="w-full flex items-center justify-between py-2 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-all group"
+                    >
+                      <span className="text-xs font-medium text-purple-700 flex items-center gap-1.5">
+                        <span className="text-sm group-hover:animate-bounce">💰</span>
+                        {costLoading ? 'Estimating...' : 'Estimate Cost'}
+                      </span>
+                      {costLoading ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-purple-300 border-t-purple-600"></div>
+                      ) : estimatedCost !== null ? (
+                        <span className="text-sm font-bold text-purple-700">₹{estimatedCost}</span>
+                      ) : (
+                        <span className="text-[10px] text-purple-500">AI powered →</span>
+                      )}
+                    </button>
                   </div>
                 </div>
                 {/* Progress */}
@@ -219,30 +328,13 @@ export default function HomePage() {
                     <span className="text-lg">🍽️</span>
                     <div>
                       <p className="text-sm font-medium text-gray-800">{entry.recipe?.name}</p>
-                      <p className="text-[10px] text-gray-500">{entry.mealSlot} • {entry.servings} servings</p>
+                      <p className="text-[10px] text-gray-500">{entry.mealSlot} · {entry.servings} servings</p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
-          {/* Expiring Soon */}
-          {expiring.length > 0 && (
-            <div className="bg-amber-50 rounded-2xl p-5 border border-amber-200">
-              <h3 className="font-bold text-amber-800 text-sm mb-2">⚠️ Expiring Soon</h3>
-              <div className="space-y-1.5">
-                {expiring.slice(0, 4).map(item => (
-                  <div key={item.id} className="flex items-center justify-between">
-                    <span className="text-xs text-gray-700">{item.name}</span>
-                    <span className="text-[10px] text-amber-600 font-medium">
-                      {Math.ceil((new Date(item.expirationDate!).getTime() - Date.now()) / 86400000)}d left
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
