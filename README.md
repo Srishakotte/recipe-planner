@@ -6,13 +6,15 @@ a meal planning app that lets you plan weekly meals, auto-generates a smart groc
 
 ## important note for evaluators
 
-the app uses **Railway-hosted MySQL** in production. since its a free-tier deployment, the first request after inactivity takes 3-5 seconds (cold start). after that, everything is instant. if you see a slight delay loading data — thats the Railway MySQL waking up, not a performance issue.
+**UI loading time:** the app uses Railway-hosted MySQL (free tier). first request after inactivity takes 3-5 seconds as the database wakes up. after that, all interactions are fast. RTK Query caches responses, so subsequent page visits are instant.
 
-for fastest evaluation experience:
-1. run locally with Docker MySQL (instructions below)
-2. or just wait 3-5s on first load — subsequent interactions are fast
+**meal plan / grocery updates:** when you change the meal plan (add/remove/swap meals, change servings), the grocery list regenerates automatically. this takes 1-2 seconds since it runs the full engine pipeline (scale → substitute → normalize → convert → consolidate → round → subtract pantry). please wait for the list to refresh — its doing real computation, not just a database fetch.
 
-also: the "Load Sample Data" button on the home page re-seeds the database. if you start fresh and want demo data back, just click it. no terminal commands needed.
+**for fastest evaluation:** run locally with Docker MySQL (instructions below). no cold start issues.
+
+**sample data:** the app comes pre-seeded with 6 recipes, 10 pantry items, and 6 meal plan entries. want to explore with data? its already there. want a blank slate? click "🧹 Start Fresh" on the homepage. want sample data back? click "📦 Load Sample Data". no terminal commands needed for either.
+
+**AI features:** require a Gemini API key (free from Google AI Studio). if you dont add one, the app works fully — all AI features fall back to smart hardcoded logic. the core engine has zero AI dependency.
 
 ---
 
@@ -534,60 +536,80 @@ the app works **100% without AI**. if Gemini is down, rate-limited, or you dont 
 
 ## future scope
 
-these arent random ideas — theyre features i actually want to build because they solve real problems i noticed while using the app myself:
+these arent random ideas — theyre features i actually want to build because they solve real problems i noticed while using the app myself and from feedback from friends who tested it:
 
-### nutrition awareness (high priority)
+### nutrition awareness (high priority — next thing id build)
 the whole point of meal planning is eating better. right now the AI estimates nutrition on-demand, but what i want:
-- **per-meal nutrition cards** — see calories/protein/carbs/fats right on the meal plan card
-- **daily/weekly nutrition goals** — set a target (2000 cal/day, 100g protein) and see progress
+- **per-meal nutrition badge** — show calories/protein right on the meal plan card so you see it while planning
+- **daily/weekly nutrition goals** — set a target (2000 cal/day, 100g protein) and see a progress bar
 - **nutrition warnings** — "your Thursday has only 40g protein across all meals"
 - **macro balance visualization** — pie chart per day showing protein/carbs/fats ratio
 - **micronutrient tracking** — iron, calcium, vitamin D for people with deficiencies
+- **dietary mode presets** — keto (high fat, low carb), high-protein, balanced — one click to set goals
 
 ### smart cost management
-- **real-time price comparison** — pull prices from BigBasket, Zepto, Instamart, Amazon Fresh
+- **real-time price comparison** — pull prices from BigBasket, Zepto, Instamart, Amazon Fresh, JioMart
 - **price history** — "onions are 30% cheaper this week than last month"
-- **budget mode** — "plan my week under ₹1500" → AI picks cheapest recipes
-- **store routing** — "buy produce from local market, dairy from BigBasket" (split list by store)
-- **bulk buy suggestions** — "you use 2kg rice every week, buy 10kg saves ₹200/month"
+- **budget mode** — "plan my week under ₹1500" → AI picks cheapest recipes that meet nutrition goals
+- **store routing** — "buy produce from local market, dairy from BigBasket" (split grocery list by store)
+- **bulk buy suggestions** — "you use 2kg rice every week, buy 10kg bag saves ₹200/month"
+- **currency settings** — support ₹ / $ / £ with automatic conversion
 
-### food waste reduction (this is what got me excited)
-- **expiry-first recipe suggestions** — pantry items expiring tomorrow → suggest recipes using THOSE items first
+### food waste reduction (inspired by Too Good To Go & OLIO apps)
+- **expiry-first recipe suggestions** — pantry items expiring tomorrow → suggest recipes using THOSE items first with a "Cook Now" flow
 - **waste tracking** — mark items as "thrown away" → app learns what you overbuy
-- **smart quantity suggestions** — "you always throw away half the spinach. buy 100g instead of 200g next time"
-- **leftover recipe chains** — cook chicken monday → AI suggests chicken fried rice for tuesday using leftover chicken
-- **community leftover sharing** — mark excess food as available for neighbors (like OLIO app)
+- **smart quantity suggestions** — "you always throw away half the spinach. buy 100g instead of 200g"
+- **leftover recipe chains** — cook chicken monday → suggests chicken fried rice for tuesday
+- **community leftover sharing** — mark excess food as available for neighbors
+- **food waste score** — monthly report showing how much you saved vs wasted
 
-### cooking experience
-- **step-by-step cooking mode** — full-screen instructions with timers per step
+### recipe experience (inspired by Tasty & Cookpad)
+- **AI-generated step-by-step cooking instructions** — for recipes that only have ingredient lists
+- **full-screen cooking mode** — large text, timers per step, voice control ("next step")
+- **recipe image from Unsplash API** — auto-fetch appetizing food photos based on recipe name
 - **parallel cooking scheduler** — planning 3 dishes? shows optimal order (start rice first, its passive)
-- **technique videos** — link common techniques (how to julienne, how to deglaze)
-- **scaling warnings** — "this recipe doesnt scale linearly — baking time changes at 2x"
-- **equipment checklist** — "you need: large pot, blender, baking sheet" shown before you start
+- **technique videos** — link to common techniques embedded in steps
+- **scaling warnings** — "baking time changes at 2x — adjust from 30min to 45min"
+- **equipment checklist** — "you need: large pot, blender, baking sheet" shown before cooking
+- **recipe import from URL** — paste a blog link → AI parses ingredients and steps automatically
 
-### smart meal planning
-- **auto-plan generation** — "fill my week" based on preferences, budget, nutrition goals
-- **variety scoring** — flags if you're eating chicken 5 days in a row
-- **seasonal ingredient awareness** — prefer seasonal produce (cheaper + fresher)
+### smart meal planning (inspired by Eat This Much & PlateJoy)
+- **auto-plan generation** — "fill my week" respecting preferences, budget, nutrition goals
+- **variety scoring** — flags if you're eating same protein 4+ days in a row
+- **seasonal ingredient awareness** — prefer whats in season = cheaper + fresher + better taste
 - **cuisine rotation** — ensure mix of Indian/Italian/Asian/Mexican throughout the week
-- **prep time optimization** — "Sunday: batch cook rice + dal + chicken. Mon-Wed: assemble only"
-- **family preference learning** — track which meals get repeated vs which get swapped (= liked vs disliked)
+- **prep time optimization** — "Sunday batch cook: rice + dal + marinades. Mon-Wed: assemble only (15min)"
+- **family preference learning** — track which meals get repeated vs swapped (= liked vs disliked)
+- **dietary tags** — veg / egg / non-veg / vegan filters on recipes and plan
+- **not just pantry items** — AI suggests recipes using pantry + minimal additional purchases
 
-### collaboration & sharing
-- **multi-user households** — roommates/family see same plan, split grocery list
+### user experience polish
+- **authentication + multi-user** — family members each have their own preferences
+- **mobile responsive** — proper mobile layout (swipe between days, bottom sheet modals)
+- **toast notifications** — slide-in notifications instead of any browser alerts
+- **drag-and-drop** meal planning (react-beautiful-dnd)
+- **dark mode** — for late-night meal planning
+- **undo/redo** — for meal plan changes
+- **keyboard shortcuts** — power users can navigate without mouse
+- **onboarding flow** — first-time user gets a guided tour
+
+### collaboration & sharing (inspired by AnyList & OurGroceries)
+- **shared household** — roommates/family see same plan, split grocery list
 - **meal voting** — family members vote on proposed meals for the week
-- **recipe sharing** — share recipes via link, import from URLs (parse ingredients from blogs)
-- **grocery list splitting** — "you buy produce, i buy dairy" with assignment
-- **live sync** — cross off items in real-time while both people shop
+- **recipe sharing** — share via link, import from friends
+- **grocery list splitting** — "you buy produce section, i buy dairy" with assignment
+- **live sync** — cross off items in real-time while both people shop simultaneously
+- **comments on meals** — "loved this one, make again!" or "too spicy, reduce chili"
 
 ### integrations
-- **calendar sync** — show meals in Google Calendar
-- **grocery delivery** — one-click order from Zepto/BigBasket/Instamart
-- **smart fridge** — auto-update pantry from fridge camera (IoT)
-- **voice control** — "hey add eggs to my pantry" via Google Assistant/Alexa
-- **health app sync** — send nutrition data to Google Fit / Apple Health
+- **calendar sync** — show meals in Google Calendar / Apple Calendar
+- **grocery delivery** — one-click order from Zepto/BigBasket/Instamart/Swiggy Instamart
+- **smart fridge** — auto-update pantry from fridge camera (IoT future)
+- **voice control** — "add eggs to pantry" via Google Assistant / Alexa
+- **health app sync** — send nutrition data to Google Fit / Apple Health / MyFitnessPal
+- **receipt scanning** — take photo of grocery receipt → auto-update pantry quantities
 
-the architecture supports all of this — the engine is pure functions (easy to extend), the AI endpoints follow a consistent pattern (prompt → parse → fallback), and RTK Query's tag invalidation means adding new data sources "just works" with the existing UI.
+the architecture supports all of this — the engine is pure functions (easy to extend), the AI endpoints follow a consistent pattern (prompt → parse → fallback), and RTK Query's tag invalidation means adding new data sources "just works" with the existing UI refresh mechanism.
 
 ---
 
