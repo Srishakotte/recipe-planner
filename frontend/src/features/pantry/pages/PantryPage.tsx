@@ -313,8 +313,25 @@ export default function PantryPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">Unit</label>
-              <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none" placeholder="g, ml, piece" />
+              <select value={unit} onChange={(e) => setUnit(e.target.value)} required
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none">
+                <option value="">Select unit</option>
+                <option value="g">g (grams)</option>
+                <option value="kg">kg (kilograms)</option>
+                <option value="ml">ml (millilitres)</option>
+                <option value="l">l (litres)</option>
+                <option value="cup">cup</option>
+                <option value="tbsp">tbsp (tablespoon)</option>
+                <option value="tsp">tsp (teaspoon)</option>
+                <option value="oz">oz (ounces)</option>
+                <option value="lb">lb (pounds)</option>
+                <option value="piece">piece</option>
+                <option value="clove">clove</option>
+                <option value="can">can</option>
+                <option value="bunch">bunch</option>
+                <option value="slice">slice</option>
+                <option value="packet">packet</option>
+              </select>
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">Expiry Date</label>

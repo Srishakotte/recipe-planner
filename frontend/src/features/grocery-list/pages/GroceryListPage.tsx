@@ -204,8 +204,22 @@ export default function GroceryListPage() {
           </div>
           <div className="w-24">
             <label className="text-xs font-medium text-gray-600 mb-1 block">Unit</label>
-            <input type="text" value={adHocUnit} onChange={(e) => setAdHocUnit(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+            <select value={adHocUnit} onChange={(e) => setAdHocUnit(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
+              <option value="piece">piece</option>
+              <option value="g">g</option>
+              <option value="kg">kg</option>
+              <option value="ml">ml</option>
+              <option value="l">l</option>
+              <option value="cup">cup</option>
+              <option value="tbsp">tbsp</option>
+              <option value="tsp">tsp</option>
+              <option value="oz">oz</option>
+              <option value="lb">lb</option>
+              <option value="can">can</option>
+              <option value="bunch">bunch</option>
+              <option value="packet">packet</option>
+            </select>
           </div>
           <button onClick={handleAddAdHoc} className="px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl">Add</button>
           <button onClick={() => setShowAddForm(false)} className="px-4 py-2.5 bg-gray-100 text-gray-600 text-sm font-semibold rounded-xl">Cancel</button>
