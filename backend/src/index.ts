@@ -22,6 +22,28 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// reset database (start fresh)
+app.post('/api/reset', async (req, res) => {
+  try {
+    const prisma = require('./prisma').default;
+    // delete in correct order (foreign key constraints)
+    await prisma.groceryItem.deleteMany();
+    await prisma.groceryGeneration.deleteMany();
+    await prisma.mealPlanEntry.deleteMany();
+    await prisma.ingredient.deleteMany();
+    await prisma.recipe.deleteMany();
+    await prisma.pantryItem.deleteMany();
+    await prisma.substitution.deleteMany();
+    await prisma.userConstraint.deleteMany();
+    await prisma.ingredientSynonym.deleteMany();
+    await prisma.unitConversion.deleteMany();
+    await prisma.ingredientDensity.deleteMany();
+    res.json({ message: 'Database cleared. Start fresh!' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // routes
 app.use('/api/recipes', recipeRoutes);
 app.use('/api/meal-plans', mealPlanRoutes);
