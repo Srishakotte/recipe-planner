@@ -121,61 +121,110 @@ note: Railway free tier has connection latency on every query (2-4 seconds per r
 
 ---
 
-## common errors and fixes
+## troubleshooting
 
-**Error: listen EADDRINUSE: address already in use :::3001**
+if something goes wrong during setup, heres every error i ran into during development and how to fix each one:
 
-port 3001 is already occupied by a previous server instance. fix:
+**"Error: listen EADDRINUSE: address already in use :::3001"**
+
+the backend port is occupied by a previous run that didnt close properly.
 ```bash
 npx kill-port 3001
 npm run dev
 ```
-if npx kill-port doesnt work:
+if that doesnt work:
 ```bash
 netstat -ano | findstr :3001
-taskkill /PID <number_shown> /F
+taskkill /PID <the_number_you_see> /F
 npm run dev
 ```
 
-**Error: Unique constraint failed on ingredient_densities_ingredientName_key**
+**"Error: P1001: Can't reach database server at localhost:3306"**
 
-this happens when running seed on a database that already has data. fix:
+MySQL isnt running. start it:
+```bash
+docker compose up -d
+```
+wait about 10 seconds, then try again. if youre using Railway instead of Docker, make sure your DATABASE_URL in .env matches your Railway connection string exactly.
+
+**"Error: Environment variable not found: DATABASE_URL"**
+
+the .env file is missing. create it:
+```bash
+cd backend
+cp .env.example .env
+```
+then edit it with your DATABASE_URL if needed.
+
+**"Cannot find module '@prisma/client'"**
+
+prisma client wasnt generated. run:
+```bash
+npx prisma generate
+```
+
+**"The table 'recipes' does not exist"**
+
+database tables havent been created yet:
 ```bash
 npx prisma db push --force-reset
 npm run db:seed
 ```
-the --force-reset clears the database completely before seeding.
 
-**Error: EPERM: operation not permitted, rename .prisma/client/query_engine**
+**"Unique constraint failed on ingredient_densities_ingredientName_key"**
 
-Windows file lock issue. close all terminal windows, wait a few seconds, then try again:
+seed data already exists in the database. clear and reseed:
+```bash
+npx prisma db push --force-reset
+npm run db:seed
+```
+
+**"[vite] http proxy error: /api/recipes ECONNREFUSED"**
+
+the backend isnt running. start backend FIRST (terminal 1), then frontend (terminal 2). backend must be on port 3001 before frontend can proxy API calls.
+
+**"Cannot find module '@google/genai'" or "Cannot find module 'recharts'"**
+
+dependencies not installed:
+```bash
+cd backend && npm install
+cd ../frontend && npm install
+```
+
+**"TSError: Unable to compile TypeScript"**
+
+prisma types out of sync:
 ```bash
 npx prisma generate
 npm run dev
 ```
 
-**Error: Gemini 503 "high demand" or 404 "model not found"**
+**"EPERM: operation not permitted, rename .prisma/client/query_engine"**
 
-Gemini is temporarily overloaded or the model name is deprecated. the app auto-upgrades deprecated models (gemini-1.5-flash, gemini-2.0-flash) to gemini-2.5-flash. if you still get errors, the AI features will fall back to hardcoded logic automatically. no action needed, the app works fine without AI.
-
-**Prisma: Can't reach database server**
-
-make sure MySQL is running. if using Docker:
+Windows file lock. close ALL terminals, wait 5 seconds, open fresh terminal:
 ```bash
-docker compose up -d
-# wait 10 seconds
+cd backend
+npx prisma generate
 npm run dev
 ```
-if using Railway, check that your DATABASE_URL in .env is correct and Railway service is active.
 
-**Frontend shows blank page or cannot connect**
+**"Gemini error: 503 high demand" or "404 model not found"**
 
-make sure the frontend dev server is running in a separate terminal:
+Gemini is temporarily overloaded or model is deprecated. no action needed. the app falls back to smart hardcoded suggestions automatically. AI is optional.
+
+**app shows "No recipes yet"**
+
+seed data wasnt loaded:
 ```bash
-cd frontend
-npm run dev
+npm run db:seed
 ```
-then open http://localhost:3000 (not 3001, thats the backend API).
+or just click "Load Sample Data" button on the home page.
+
+**frontend blank page**
+
+make sure youre opening http://localhost:3000 (frontend) not http://localhost:3001 (backend API). both servers need to be running in separate terminals.
+
+**note about .env credentials:** the .env file contains database credentials and API keys. its gitignored for security. if you need my exact .env values to test with the Railway database, reach out and i can share them securely.
 
 ---
 
