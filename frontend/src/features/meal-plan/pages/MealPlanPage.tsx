@@ -66,7 +66,7 @@ export default function MealPlanPage() {
   const todayStr = new Date().toISOString().split('T')[0];
   const currentSlotIdx = getCurrentSlotIndex();
 
-  // Check if a date+slot is in the past (can be marked as leftover)
+  // Check if a date+slot is in the past or current (can be marked as leftover)
   const isPastMeal = (date: string, slot: string): boolean => {
     if (date < todayStr) return true;
     if (date === todayStr) {
@@ -75,6 +75,9 @@ export default function MealPlanPage() {
     }
     return false;
   };
+
+  // Check if date is BEFORE today (fully locked — not even today)
+  const isBeforeToday = (date: string): boolean => date < todayStr;
 
   // Get available leftovers (past/current meals marked as leftover)
   const availableLeftovers = entries.filter(e => {
@@ -180,8 +183,8 @@ export default function MealPlanPage() {
             {weekDates.map((date, dayIdx) => {
               const isToday = date === todayStr;
               return (
-                <div key={date} className={`rounded-2xl overflow-hidden border transition-all ${isToday ? 'border-green-400 shadow-md shadow-green-100 bg-white' : 'border-gray-100 bg-white shadow-sm'}`}>
-                  <div className={`text-center py-2.5 ${isToday ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white' : date < todayStr ? 'bg-gray-100 text-gray-500' : 'bg-gray-50 text-gray-700'}`}>
+                <div key={date} className={`rounded-2xl overflow-hidden border transition-all ${isToday ? 'border-green-400 shadow-md shadow-green-100 bg-white' : isBeforeToday(date) ? 'border-gray-100 bg-white shadow-sm opacity-60' : 'border-gray-100 bg-white shadow-sm'}`}>
+                  <div className={`text-center py-2.5 ${isToday ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white' : isBeforeToday(date) ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                     <p className="text-xs font-bold uppercase tracking-wide">{DAYS_SHORT[dayIdx]}</p>
                     <p className={`text-lg font-bold`}>{new Date(date).getDate()}</p>
                     {isToday && <span className="text-[9px] font-bold text-green-100">TODAY</span>}
@@ -209,21 +212,28 @@ export default function MealPlanPage() {
                                   {entry.recipe?.name}
                                 </p>
                                 <div className="flex items-center justify-between mt-0.5">
-                                  <div className="flex items-center gap-0.5">
-                                    <button onClick={() => updateEntry({ id: entry.id, data: { servings: Math.max(1, entry.servings - 1) } })} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">-</button>
-                                    <span className="text-[10px] text-gray-600 px-0.5">{entry.servings}</span>
-                                    <button onClick={() => updateEntry({ id: entry.id, data: { servings: entry.servings + 1 } })} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">+</button>
-                                  </div>
+                                  {!isBeforeToday(date) && (
+                                    <div className="flex items-center gap-0.5">
+                                      <button onClick={() => updateEntry({ id: entry.id, data: { servings: Math.max(1, entry.servings - 1) } })} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">-</button>
+                                      <span className="text-[10px] text-gray-600 px-0.5">{entry.servings}</span>
+                                      <button onClick={() => updateEntry({ id: entry.id, data: { servings: entry.servings + 1 } })} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">+</button>
+                                    </div>
+                                  )}
+                                  {isBeforeToday(date) && (
+                                    <span className="text-[9px] text-gray-400">{entry.servings} srv</span>
+                                  )}
                                   <div className="flex items-center gap-1">
                                     {canBeLeftover && (
                                       <button onClick={() => setShowLeftoverModal({ entryId: entry.id, recipeName: entry.recipe?.name || 'Meal' })} className={`text-[9px] px-1 rounded ${(entry as any).isLeftover ? 'text-amber-600 font-bold' : 'text-gray-400 hover:text-amber-500'}`} title={`${(entry as any).isLeftover ? 'Unmark' : 'Mark as'} leftover`}>
                                         🍱
                                       </button>
                                     )}
-                                    {!canBeLeftover && (
+                                    {!isBeforeToday(date) && !canBeLeftover && (
                                       <button onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })} className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap">🔄</button>
                                     )}
-                                    <button onClick={() => deleteEntry(entry.id)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5">✕</button>
+                                    {!isBeforeToday(date) && (
+                                      <button onClick={() => deleteEntry(entry.id)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5">✕</button>
+                                    )}
                                   </div>
                                 </div>
                               </div>
