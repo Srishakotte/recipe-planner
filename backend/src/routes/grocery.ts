@@ -10,11 +10,28 @@ router.post('/generate', async (req: Request, res: Response) => {
   try {
     const { weekStart } = req.body;
     let where: any = {};
+    
+    // Always filter from today onwards — don't generate grocery items for past meals
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     if (weekStart) {
       const start = new Date(weekStart);
+      const effectiveStart = start > today ? start : today;
       const end = new Date(start); end.setDate(end.getDate() + 7);
-      where.planDate = { gte: start, lt: end };
+      where.planDate = { gte: effectiveStart, lt: end };
+    } else {
+      // Default: from today to 7 days out
+      const end = new Date(today); end.setDate(end.getDate() + 7);
+      where.planDate = { gte: today, lt: end };
     }
+
+    // Exclude leftover entries that are fully consumed
+    where.OR = [
+      { isLeftover: false },
+      { isLeftover: true, leftoverServings: { gt: 0 } },
+      { isLeftover: true, leftoverServings: null },
+    ];
 
     const entries = await prisma.mealPlanEntry.findMany({ where, include: { recipe: { include: { ingredients: true } } } });
     if (entries.length === 0) { res.json({ items: [], warnings: [], generatedAt: new Date().toISOString() }); return; }
