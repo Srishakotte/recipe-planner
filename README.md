@@ -340,22 +340,35 @@ unmarking a leftover is one click, no modal needed. it immediately removes from 
 - loading states throughout (spinners, pulse animations)
 - empty states with helpful messages and action buttons
 
-### stretch features
+### stretch features (beyond requirements)
 
-- leftover system with expiry + dynamic remaining servings + serving cap
-- copy previous week meal plan
-- swap recipe button
-- dashboard with analytics charts
-- AI recipe suggestions from pantry items
-- AI nutrition estimation from actual weekly meal plan data
-- AI grocery cost estimation in INR
-- smart unit display (1500ml becomes 1.5L, 2000g becomes 2kg)
-- pantry expiry warnings + grouped display showing total, expiring, and safe quantities
-- synonym management UI
-- CSV export (only items that need to be bought)
-- start fresh + reload sample data from homepage
-- inline delete confirmation (no browser popups)
-- unit dropdowns everywhere (recipe form, pantry form, grocery add item)
+these are features i built beyond what was asked because they make the app feel like a real product:
+
+**leftover system** - mark past meals as leftover, set expiry, and reuse servings in future meals. tracks remaining servings dynamically. if you have 4 servings leftover and use 2 in tomorrow's plan, it shows 2 remaining. delete that meal and it goes back to 4. cant unmark a leftover if its being used by a future meal (shows error).
+
+**AI recipe suggestions** - click "Generate Recipe" and Gemini AI suggests 3 recipes based on your actual pantry items. each suggestion is expandable showing ingredients, steps, and nutrition. one click adds it to your recipe list ready to use in meal plans.
+
+**AI nutrition estimation** - on the dashboard, click "Estimate Nutrition" and it sends your actual weekly meal plan (with real recipes and scaled ingredient quantities) to Gemini. returns per-day calorie/protein/carbs/fats breakdown shown in charts.
+
+**AI cost estimation** - on the grocery page, click "Estimate Cost" and it sends your actual grocery list to Gemini asking for average INR prices from online stores. shows total estimated cost.
+
+**pantry grouping** - if you have the same item with different expiry dates (like 2 eggs expiring today + 6 eggs expiring next week), it groups them into one row showing total quantity, safe quantity, and expiring quantity separately. each batch has its own edit/delete button.
+
+**recipe protection** - cant delete a recipe thats in a future meal plan. shows inline error: "This recipe is planned for X upcoming meals. Remove it from the plan first."
+
+**copy previous week** - one click copies last weeks entire meal plan to this week.
+
+**start fresh / reload sample data** - homepage buttons to clear everything or reload demo data without touching the terminal.
+
+**inline confirmations** - no browser popup alerts anywhere. delete buttons show "Sure? Yes/No" inline.
+
+**unit dropdowns** - recipe form, pantry form, and grocery add-item form all use dropdown selects for units (g, kg, ml, l, cup, tbsp, tsp, oz, lb, piece, clove, can, bunch, slice, packet). prevents typos and ensures engine can convert properly.
+
+**alphabetical sorting** - recipes sorted A-Z by name. grocery items sorted alphabetically within each store section. pantry sorted A-Z.
+
+**CSV export** - exports only "to buy" items (not pantry-covered or checked-off) as a CSV file you can share or print.
+
+**smart unit display** - engine outputs user-friendly quantities: 1500ml becomes 1.5L, 2000g becomes 2kg, 0.5 becomes "half".
 
 ---
 

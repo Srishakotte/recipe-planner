@@ -12,7 +12,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (ingredient) where.ingredients = { some: { name: { contains: ingredient } } };
 
     const recipes = await prisma.recipe.findMany({
-      where, include: { ingredients: { orderBy: { sortOrder: 'asc' } } }, orderBy: { createdAt: 'desc' },
+      where, include: { ingredients: { orderBy: { sortOrder: 'asc' } } }, orderBy: { name: 'asc' },
     });
     res.json(recipes);
   } catch (error) { res.status(500).json({ error: 'Failed to fetch recipes' }); }

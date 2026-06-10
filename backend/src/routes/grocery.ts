@@ -112,6 +112,8 @@ router.get('/', async (req: Request, res: Response) => {
     if (section) items = items.filter(i => i.storeSection === section);
     if (uncheckedOnly === 'true') items = items.filter(i => !i.isChecked);
     if (warningsOnly === 'true') items = items.filter(i => i.warnings && (i.warnings as any[]).length > 0);
+    // sort alphabetically within sections
+    items = items.sort((a, b) => a.storeSection.localeCompare(b.storeSection) || a.ingredientName.localeCompare(b.ingredientName));
     res.json({ generationId: latestGen.id, version: latestGen.version, generatedAt: latestGen.generatedAt, items });
   } catch (error) { res.status(500).json({ error: 'Failed to fetch grocery list' }); }
 });
