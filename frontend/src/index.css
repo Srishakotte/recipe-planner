@@ -92,3 +92,21 @@
   background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
   border: 2px solid #10b981;
 }
+
+/* Button interaction */
+button {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+button:hover {
+  filter: brightness(0.93);
+}
+button:active {
+  transform: scale(0.95);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+  filter: none;
+}

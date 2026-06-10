@@ -79,17 +79,23 @@ export default function MealPlanPage() {
   // Check if date is BEFORE today (fully locked — not even today)
   const isBeforeToday = (date: string): boolean => date < todayStr;
 
-  // Get available leftovers (past/current meals marked as leftover)
+  // Get available leftovers with remaining servings
   const availableLeftovers = entries.filter(e => {
     if (!(e as any).isLeftover) return false;
-    // Check expiry
     const expiry = (e as any).leftoverExpiryDate;
     if (expiry) {
       const expiryDate = expiry.split('T')[0];
       if (expiryDate < todayStr) return false;
     }
     return true;
-  });
+  }).map(e => {
+    // Calculate used servings (future meals using same recipe that are marked as using leftover)
+    const usedServings = entries.filter(
+      f => f.recipeId === e.recipeId && f.id !== e.id && !(f as any).isLeftover && f.planDate.split('T')[0] > e.planDate.split('T')[0]
+    ).reduce((sum, f) => sum + f.servings, 0);
+    const remaining = Math.max(0, e.servings - usedServings);
+    return { ...e, remainingServings: remaining };
+  }).filter(e => e.remainingServings > 0);
 
   const getEntriesForDaySlot = (date: string, slot: string): MealPlanEntry[] => {
     return entries.filter(e => e.planDate.split('T')[0] === date && e.mealSlot.toLowerCase() === slot.toLowerCase());
@@ -276,9 +282,9 @@ export default function MealPlanPage() {
                 <div className="flex flex-wrap gap-2">
                   {availableLeftovers.map(e => (
                     <button key={e.id} type="button"
-                      onClick={() => { setSelectedRecipeId(e.recipeId); setServings(e.servings); setUseLeftover(true); }}
+                      onClick={() => { setSelectedRecipeId(e.recipeId); setServings(e.remainingServings); setUseLeftover(true); }}
                       className="px-3 py-1.5 bg-white text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 border border-amber-200 transition-colors">
-                      🍱 {e.recipe?.name} ({e.servings}sv)
+                      🍱 {e.recipe?.name} ({e.remainingServings}sv left)
                     </button>
                   ))}
                 </div>
