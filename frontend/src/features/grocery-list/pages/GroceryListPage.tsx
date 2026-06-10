@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   useGetGroceryListQuery,
   useGenerateGroceryListMutation,
@@ -34,6 +34,13 @@ export default function GroceryListPage() {
   const [addAdHocItem] = useAddAdHocItemMutation();
   const [deleteItem] = useDeleteGroceryItemMutation();
   const [estimateCost] = useAiEstimateCostMutation();
+
+  // Auto-generate grocery list on first load if empty
+  useEffect(() => {
+    if (!isLoading && (!groceryList || !groceryList.items || groceryList.items.length === 0)) {
+      generateList();
+    }
+  }, [isLoading, groceryList]);
 
   const items = groceryList?.items || [];
 
