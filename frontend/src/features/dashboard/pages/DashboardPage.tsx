@@ -3,6 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
+import { useResetAppDataMutation } from '../../../app/api';
+import { showToast } from '../../../shared/components/Toast';
 
 interface AnalyticsData {
   overview: {
@@ -23,13 +25,18 @@ const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 export default function DashboardPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetAppData, { isLoading: isResetting }] = useResetAppDataMutation();
 
-  useEffect(() => {
+  const fetchData = () => {
+    setLoading(true);
     fetch('/api/analytics/summary')
       .then(res => res.json())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { fetchData(); }, []);
 
   if (loading) {
     return (
@@ -46,7 +53,15 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
+        <button
+          onClick={() => setShowResetConfirm(true)}
+          className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          Start Fresh
+        </button>
+      </div>
 
       {/* Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 stagger-children">
@@ -170,6 +185,60 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500 mt-2">
             {data.groceryStats.checked} of {data.groceryStats.total} items checked off
           </p>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-bold text-red-700 mb-2">Start Fresh?</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              This will permanently delete all your recipes, meal plans, pantry items, grocery lists, and dietary constraints.
+              Reference data (unit conversions, synonyms, densities, substitution rules) will be kept.
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              Choose how you'd like to start:
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={async () => {
+                  const result = await resetAppData({ reseed: true });
+                  if ('data' in result) {
+                    showToast('Reset with sample data!', 'success');
+                    setShowResetConfirm(false);
+                    fetchData();
+                  } else { showToast('Failed to reset', 'error'); }
+                }}
+                disabled={isResetting}
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white px-4 py-3 rounded-lg font-medium transition-colors text-left"
+              >
+                <span className="block font-semibold">Reset with Sample Data</span>
+                <span className="block text-xs text-amber-100 mt-0.5">Clear everything and load demo recipes, pantry items, and a starter meal plan</span>
+              </button>
+              <button
+                onClick={async () => {
+                  const result = await resetAppData({});
+                  if ('data' in result) {
+                    showToast('All data cleared! Start fresh.', 'success');
+                    setShowResetConfirm(false);
+                    fetchData();
+                  } else { showToast('Failed to reset', 'error'); }
+                }}
+                disabled={isResetting}
+                className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-4 py-3 rounded-lg font-medium transition-colors text-left"
+              >
+                <span className="block font-semibold">Completely Empty</span>
+                <span className="block text-xs text-red-100 mt-0.5">Clear everything — start from a blank slate, add your own recipes</span>
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
