@@ -11,8 +11,8 @@ import {
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MEAL_SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'];
-const SLOT_ICONS: Record<string, string> = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
+const MEAL_SLOTS = ['breakfast', 'lunch', 'dinner', 'snack', 'anytime'];
+const SLOT_ICONS: Record<string, string> = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿', anytime: '🕐' };
 
 function getWeekStart(date: Date): string {
   const d = new Date(date);
@@ -196,7 +196,6 @@ export default function MealPlanPage() {
                             <span className="text-[10px] font-semibold text-gray-400 uppercase flex items-center gap-1">
                               <span>{SLOT_ICONS[slot]}</span> {slot}
                             </span>
-                            <button onClick={() => setShowAddModal({ date, slot })} className="w-5 h-5 flex items-center justify-center rounded-md text-green-500 hover:bg-green-50 text-xs font-bold">+</button>
                           </div>
                           {slotEntries.length === 0 ? (
                             <div onClick={() => setShowAddModal({ date, slot })} className="h-8 border border-dashed border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-300 hover:bg-green-50/30 transition-all">

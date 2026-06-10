@@ -250,7 +250,9 @@ export default function GroceryListPage() {
                 <span className="text-sm">
                   {section === 'produce' ? '🥬' : section === 'dairy' ? '🥛' : section === 'meat' ? '🥩' : section === 'pantry' ? '🏠' : section === 'bakery' ? '🍞' : section === 'frozen' ? '🧊' : '📦'}
                 </span>
-                <h3 className="font-semibold text-gray-700 capitalize text-sm">{section}</h3>
+                <h3 className="font-semibold text-gray-700 capitalize text-sm">
+                  {section === 'produce' ? 'Fresh Produce' : section === 'dairy' ? 'Dairy & Eggs' : section === 'meat' ? 'Meat & Seafood' : section === 'pantry' ? 'Pantry Staples' : section === 'bakery' ? 'Bakery' : section === 'frozen' ? 'Frozen Foods' : 'Other Items'}
+                </h3>
                 <span className="text-xs text-gray-400 ml-auto">{sectionItems.length} items</span>
               </div>
               <div className="divide-y divide-gray-50">
