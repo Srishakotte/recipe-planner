@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   useGetRecipesQuery,
   useDeleteRecipeMutation,
+  useCreateRecipeMutation,
   useAiSuggestRecipesMutation,
   Recipe,
 } from '../../../app/api';
@@ -20,10 +21,13 @@ export default function RecipesPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [expandedAiRecipe, setExpandedAiRecipe] = useState<number | null>(null);
+  const [addingAiRecipe, setAddingAiRecipe] = useState(false);
   const [suggestRecipes] = useAiSuggestRecipesMutation();
 
   const { data: recipes, isLoading } = useGetRecipesQuery(search || undefined);
   const [deleteRecipe] = useDeleteRecipeMutation();
+  const [createRecipe] = useCreateRecipeMutation();
 
   const handleEdit = (recipe: Recipe) => {
     setEditingRecipe(recipe);
@@ -41,6 +45,28 @@ export default function RecipesPage() {
       setTimeout(() => setDeleteError(null), 5000);
     }
     setConfirmDeleteId(null);
+  };
+
+  const handleAddAiRecipe = async (aiRecipe: any) => {
+    setAddingAiRecipe(true);
+    try {
+      const ingredients = (aiRecipe.ingredientsUsed || aiRecipe.ingredients || []).map((ing: any, i: number) => {
+        if (typeof ing === 'string') {
+          return { name: ing.toLowerCase(), quantity: 1, unit: 'piece', storeSection: 'produce', sortOrder: i };
+        }
+        return { name: (ing.name || ing).toLowerCase(), quantity: ing.quantity || 1, unit: ing.unit || 'piece', storeSection: ing.storeSection || 'produce', sortOrder: i };
+      });
+      await createRecipe({
+        name: aiRecipe.name,
+        description: aiRecipe.steps || aiRecipe.description || `AI-suggested recipe (${aiRecipe.cookingTime || 20} min, ${aiRecipe.calories || 350} kcal)`,
+        defaultServings: aiRecipe.servings || 2,
+        ingredients,
+      }).unwrap();
+      setExpandedAiRecipe(null);
+    } catch (err) {
+      console.error('Failed to add AI recipe:', err);
+    }
+    setAddingAiRecipe(false);
   };
 
   const handleFormClose = () => {
@@ -113,17 +139,48 @@ export default function RecipesPage() {
                   <span className="text-sm text-purple-600">AI is generating recipes...</span>
                 </div>
               ) : aiRecipes.length > 0 ? (
-                <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="mt-4 space-y-3">
                   {aiRecipes.slice(0, 3).map((recipe: any, i: number) => (
-                    <div key={i} className="bg-white rounded-xl p-4 border border-purple-100 card-hover cursor-pointer">
-                      <span className="text-2xl">{['🍳', '🥗', '🍲'][i % 3]}</span>
-                      <p className="font-medium text-sm mt-2 text-gray-800">{recipe.name}</p>
-                      <p className="text-xs text-gray-500 mt-1">⏱ {recipe.cookingTime || 20} min • 🔥 {recipe.calories || 350} kcal</p>
-                      {recipe.ingredientsUsed && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {recipe.ingredientsUsed.map((ing: string, j: number) => (
-                            <span key={j} className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md">✓ {ing}</span>
-                          ))}
+                    <div key={i} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
+                      <div
+                        onClick={() => setExpandedAiRecipe(expandedAiRecipe === i ? null : i)}
+                        className="p-4 cursor-pointer hover:bg-purple-50/50 transition-colors flex items-center gap-3"
+                      >
+                        <span className="text-2xl">{['🍳', '🥗', '🍲'][i % 3]}</span>
+                        <div className="flex-1">
+                          <p className="font-medium text-sm text-gray-800">{recipe.name}</p>
+                          <p className="text-xs text-gray-500">⏱ {recipe.cookingTime || 20} min • 🔥 {recipe.calories || 350} kcal • 💪 {recipe.protein || 15}g protein</p>
+                        </div>
+                        <span className="text-xs text-purple-500">{expandedAiRecipe === i ? '▲' : '▼'} details</span>
+                      </div>
+                      {expandedAiRecipe === i && (
+                        <div className="px-4 pb-4 border-t border-purple-50 pt-3 space-y-3">
+                          {recipe.ingredientsUsed && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">Ingredients:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {recipe.ingredientsUsed.map((ing: string, j: number) => (
+                                  <span key={j} className="text-[11px] px-2 py-0.5 bg-green-50 text-green-700 rounded-md border border-green-100">{ing}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {recipe.steps && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">Steps:</p>
+                              <p className="text-xs text-gray-600 leading-relaxed">{recipe.steps}</p>
+                            </div>
+                          )}
+                          {!recipe.steps && (
+                            <p className="text-xs text-gray-400 italic">Cooking steps will be available after adding to your recipes.</p>
+                          )}
+                          <button
+                            onClick={() => handleAddAiRecipe(recipe)}
+                            disabled={addingAiRecipe}
+                            className="w-full px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-xs font-semibold rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
+                          >
+                            {addingAiRecipe ? 'Adding...' : '+ Add to My Recipes'}
+                          </button>
                         </div>
                       )}
                     </div>

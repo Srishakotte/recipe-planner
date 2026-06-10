@@ -86,7 +86,7 @@ router.post('/suggest-recipes', async (req: Request, res: Response) => {
   try {
     const pantryItems = await prisma.pantryItem.findMany();
     const ingredients = pantryItems.map(p => `${p.name} (${p.quantity} ${p.unit})`).join(', ');
-    const prompt = `I have these ingredients in my pantry: ${ingredients}. Suggest 3 quick recipes I can make using ONLY these ingredients. Return ONLY a valid JSON array, no other text: [{"name":"Recipe Name","cookingTime":15,"calories":350,"protein":12,"difficulty":"easy","ingredientsUsed":["rice","onion"]}]`;
+    const prompt = `I have these ingredients in my pantry: ${ingredients}. Suggest 3 quick recipes I can make using these ingredients. For each recipe include the name, cooking time, estimated calories, protein, ingredients used with quantities, and brief step-by-step instructions. Return ONLY a valid JSON array, no other text: [{"name":"Recipe Name","cookingTime":15,"calories":350,"protein":12,"servings":2,"ingredientsUsed":["rice","onion"],"ingredients":[{"name":"rice","quantity":200,"unit":"g"},{"name":"onion","quantity":1,"unit":"piece"}],"steps":"1. Cook rice. 2. Chop onion. 3. Fry together with oil and soy sauce."}]`;
     const response = await callAI(prompt);
     if (response) {
       try {

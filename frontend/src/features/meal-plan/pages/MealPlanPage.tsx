@@ -106,16 +106,17 @@ export default function MealPlanPage() {
       }
     });
 
-    // Step 3: subtract used servings (future entries with isLeftover=true and same recipeId)
+    // Step 3: subtract used servings (today or future entries with isLeftover=true and same recipeId)
     return Object.values(byRecipe).map(({ totalServings, entry }) => {
+      const sourceIds = sources.filter(s => s.recipeId === entry.recipeId).map(s => s.id);
       const usedServings = entries.filter(
         f => f.recipeId === entry.recipeId
-          && f.id !== entry.id
+          && !sourceIds.includes(f.id)
           && (f as any).isLeftover === true
-          && f.planDate.split('T')[0] > todayStr
+          && f.planDate.split('T')[0] >= todayStr
       ).reduce((sum, f) => sum + f.servings, 0);
       const remaining = Math.max(0, totalServings - usedServings);
-      return { ...entry, remainingServings: remaining };
+      return { ...entry, remainingServings: remaining, sourceIds };
     }).filter(e => e.remainingServings > 0);
   })();
 
@@ -273,14 +274,23 @@ export default function MealPlanPage() {
                                     {canBeLeftover && (
                                       <button onClick={async () => {
                                         if ((entry as any).isLeftover) {
-                                          // Directly unmark leftover — removes from available leftovers
+                                          // Check if this leftover is being used by future meals
+                                          const futureUses = entries.filter(
+                                            f => f.recipeId === entry.recipeId
+                                              && f.id !== entry.id
+                                              && (f as any).isLeftover === true
+                                              && f.planDate.split('T')[0] >= todayStr
+                                          );
+                                          if (futureUses.length > 0) {
+                                            alert(`Can't unmark — this leftover is used by ${futureUses.length} future meal(s). Remove those meals first.`);
+                                            return;
+                                          }
                                           try {
                                             await updateEntry({ id: entry.id, data: { isLeftover: false, leftoverExpiryDate: null } as any }).unwrap();
                                           } catch (err) {
                                             console.error('Failed to unmark leftover:', err);
                                           }
                                         } else {
-                                          // Open modal to mark as leftover with expiry
                                           setShowLeftoverModal({ entryId: entry.id, recipeName: entry.recipe?.name || 'Meal' });
                                         }
                                       }} className={`text-[9px] px-1 rounded ${(entry as any).isLeftover ? 'text-amber-600 font-bold' : 'text-gray-400 hover:text-amber-500'}`} title={`${(entry as any).isLeftover ? 'Unmark' : 'Mark as'} leftover`}>
