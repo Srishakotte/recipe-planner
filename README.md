@@ -1,6 +1,12 @@
 # Recipe Planner + Grocery List
 
+
 A meal planning app that lets you plan weekly meals, auto-generates a smart grocery list, handles unit conversions, pantry subtraction, substitutions and keeps everything in sync when plans change.
+
+---
+## Demo Video
+
+https://www.youtube.com/watch?v=DkaJRh1jgL8
 
 ---
 
@@ -628,7 +634,8 @@ the architecture supports all of this. the engine is pure functions so its easy 
 
 ## AI Used During Development
 
-I used Kiro (AI coding agent) for writing code faster. It helped with boilerplate generation, repetitive UI components, and debugging. The architecture decisions, algorithm design, schema planning, and feature prioritization were done by me.
+I used Kiro (AI coding agent) for writing code faster. It helped with boilerplate generation, repetitive UI components, and debugging. 
+The architecture decisions, algorithm design, schema planning, and feature prioritization were done by me.
 
 ---
 
