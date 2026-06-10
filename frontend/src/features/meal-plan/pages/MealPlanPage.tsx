@@ -104,13 +104,17 @@ export default function MealPlanPage() {
   const handleAddEntry = async () => {
     if (!showAddModal || !selectedRecipeId) return;
     const recipe = recipes.find(r => r.id === selectedRecipeId);
-    await addEntry({
-      recipeId: selectedRecipeId,
-      planDate: showAddModal.date,
-      mealSlot: showAddModal.slot,
-      servings: servings || recipe?.defaultServings || 2,
-      isLeftover: useLeftover,
-    } as any);
+    try {
+      await addEntry({
+        recipeId: selectedRecipeId,
+        planDate: showAddModal.date,
+        mealSlot: showAddModal.slot,
+        servings: servings || recipe?.defaultServings || 2,
+        isLeftover: useLeftover,
+      } as any).unwrap();
+    } catch (e) {
+      console.error('Failed to add entry:', e);
+    }
     setShowAddModal(null);
     setSelectedRecipeId('');
     setServings(2);
@@ -220,7 +224,7 @@ export default function MealPlanPage() {
                                 <div className="flex items-center justify-between mt-0.5">
                                   {!isBeforeToday(date) && (
                                     <div className="flex items-center gap-0.5">
-                                      <button onClick={() => updateEntry({ id: entry.id, data: { servings: Math.max(1, entry.servings - 1) } })} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">-</button>
+                                      <button onClick={() => { if (entry.servings <= 1) { deleteEntry(entry.id); } else { updateEntry({ id: entry.id, data: { servings: entry.servings - 1 } }); } }} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">-</button>
                                       <span className="text-[10px] text-gray-600 px-0.5">{entry.servings}</span>
                                       <button onClick={() => updateEntry({ id: entry.id, data: { servings: entry.servings + 1 } })} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">+</button>
                                     </div>
@@ -304,7 +308,19 @@ export default function MealPlanPage() {
               <div className="flex gap-4 items-end">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Servings</label>
-                  <input type="number" value={servings} onChange={(e) => setServings(Number(e.target.value))} min={1} className="w-24 px-4 py-3 border border-gray-200 rounded-xl text-sm" />
+                  <input type="number" value={servings} onChange={(e) => {
+                    const val = Number(e.target.value);
+                    if (useLeftover) {
+                      const leftover = availableLeftovers.find(l => l.recipeId === selectedRecipeId);
+                      const max = leftover?.remainingServings || val;
+                      setServings(Math.min(val, max));
+                    } else {
+                      setServings(val);
+                    }
+                  }} min={1} max={useLeftover ? (availableLeftovers.find(l => l.recipeId === selectedRecipeId)?.remainingServings || 99) : undefined} className="w-24 px-4 py-3 border border-gray-200 rounded-xl text-sm" />
+                  {useLeftover && selectedRecipeId && (
+                    <p className="text-[10px] text-amber-600 mt-1">Max: {availableLeftovers.find(l => l.recipeId === selectedRecipeId)?.remainingServings || 0} servings available</p>
+                  )}
                 </div>
                 <label className={`flex items-center gap-2 px-4 py-3 rounded-xl cursor-pointer transition-colors ${useLeftover ? 'bg-amber-100 border-amber-300 border' : 'bg-gray-50 border border-gray-200 hover:bg-amber-50'}`}>
                   <input type="checkbox" checked={useLeftover} onChange={(e) => setUseLeftover(e.target.checked)} className="rounded border-amber-300 text-amber-600" />

@@ -7,6 +7,7 @@ import {
   useMarkAlreadyHaveMutation,
   useAddAdHocItemMutation,
   useDeleteGroceryItemMutation,
+  useAiEstimateCostMutation,
   GroceryItem,
 } from '../../../app/api';
 
@@ -22,6 +23,8 @@ export default function GroceryListPage() {
   const [overrideId, setOverrideId] = useState<string | null>(null);
   const [overrideValue, setOverrideValue] = useState(0);
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
+  const [costLoading, setCostLoading] = useState(false);
 
   const { data: groceryList, isLoading } = useGetGroceryListQuery();
   const [generateList, { isLoading: isGenerating }] = useGenerateGroceryListMutation();
@@ -30,6 +33,7 @@ export default function GroceryListPage() {
   const [markAlreadyHave] = useMarkAlreadyHaveMutation();
   const [addAdHocItem] = useAddAdHocItemMutation();
   const [deleteItem] = useDeleteGroceryItemMutation();
+  const [estimateCost] = useAiEstimateCostMutation();
 
   const items = groceryList?.items || [];
 
@@ -121,10 +125,36 @@ export default function GroceryListPage() {
           <p className="text-2xl font-bold text-amber-600">{needToBuy.length}</p>
           <p className="text-xs text-gray-500">Need To Buy</p>
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover cursor-pointer" onClick={async () => {
+          if (estimatedCost !== null) return;
+          setCostLoading(true);
+          try {
+            const result = await estimateCost().unwrap();
+            setEstimatedCost(result.totalCost);
+          } catch (e) {
+            setEstimatedCost(needToBuy.length * 60);
+          }
+          setCostLoading(false);
+        }}>
           <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center mb-2"><span className="text-sm">💰</span></div>
-          <p className="text-2xl font-bold text-purple-600">₹{needToBuy.length * 60}</p>
-          <p className="text-xs text-gray-500">Est. Cost (click to refine)</p>
+          {costLoading ? (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Estimating...</p>
+            </>
+          ) : estimatedCost !== null ? (
+            <>
+              <p className="text-2xl font-bold text-purple-600">₹{estimatedCost}</p>
+              <p className="text-xs text-gray-500">Est. Cost (AI)</p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-bold text-purple-600">Click</p>
+              <p className="text-xs text-gray-500">Estimate Cost (AI)</p>
+            </>
+          )}
         </div>
       </div>
 

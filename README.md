@@ -350,3 +350,17 @@ fallback: if AI is unavailable, smart hardcoded logic suggests recipes based on 
 ## external libraries
 
 express, prisma, @reduxjs/toolkit, react-router-dom, tailwindcss, recharts, @google/genai, cors, dotenv, react-icons
+
+## future scope (ai enhancements)
+
+planned ai features using gemini api:
+- estimated grocery cost by analysing prices from amazon,flipkart,zepto,instamart
+- recipe generation from pantry items (cook with what you have)
+- nutritional analysis (protein,carbs,fats,calories per meal)
+- smart substitutions with pantry awareness
+- weekly meal plan auto-generation based on preferences
+- expiring item recipe suggestions (reduce food waste)
+- step-by-step cooking instructions generated per recipe
+
+the ai integration architecture is ready (backend endpoints exist at /api/ai/*) 
+but kept as future scope to prioritize core grocery engine correctness.
