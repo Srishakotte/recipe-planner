@@ -179,7 +179,7 @@ export default function PantryPage() {
       {expiringItems.length > 0 && (
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-5 border border-amber-200">
           <h3 className="font-bold text-amber-800 flex items-center gap-2">
-            <span>⚠️</span> Expiring Soon — Use These First!
+            <span>⚠️</span> Expiring Soon · Use These First!
           </h3>
           <div className="flex flex-wrap gap-3 mt-3">
             {expiringItems.map(item => {
@@ -301,7 +301,7 @@ export default function PantryPage() {
                     <td className="px-5 py-4 text-gray-600">{item.quantity}</td>
                     <td className="px-5 py-4 text-gray-500">{item.unit}</td>
                     <td className="px-5 py-4 text-gray-500 text-sm">
-                      {item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : '—'}
+                      {item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : '·'}
                     </td>
                     <td className="px-5 py-4">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium ${status.color}`}>

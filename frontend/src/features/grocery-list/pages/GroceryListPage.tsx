@@ -99,7 +99,7 @@ export default function GroceryListPage() {
             disabled={isGenerating}
             className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-200 transition-all hover:scale-[1.02] disabled:opacity-50"
           >
-            {isGenerating ? '⏳ Generating...' : '⚡ Generate List'}
+            Refresh
           </button>
         </div>
       </div>

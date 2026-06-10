@@ -147,7 +147,7 @@ export default function MealPlanPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">📅 Meal Plan</h1>
-          <p className="text-gray-500 mt-1">Plan your meals — grocery list updates automatically</p>
+          <p className="text-gray-500 mt-1">Plan your meals · grocery list updates automatically</p>
         </div>
         <div className="flex items-center gap-3">
           {prevEntries.length > 0 && (
@@ -163,7 +163,7 @@ export default function MealPlanPage() {
         <button onClick={() => navigateWeek(-1)} className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 transition-all">← Prev</button>
         <div className="px-5 py-2 bg-green-50 border border-green-200 rounded-xl">
           <span className="text-sm font-semibold text-green-800">
-            {new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} — {new Date(weekDates[6]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {new Date(weekDates[6]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </span>
         </div>
         <button onClick={() => navigateWeek(1)} className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 transition-all">Next →</button>

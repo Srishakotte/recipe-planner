@@ -40,7 +40,7 @@ router.post('/', async (req: Request, res: Response) => {
         steps: req.body.steps || null,
         ingredients: {
           create: ingredients.map((ing: any, index: number) => ({
-            name: ing.name.toLowerCase().trim(), displayName: ing.displayName || ing.name,
+            name: ing.name.trim().replace(/\s+/g, ' ').toLowerCase(), displayName: ing.displayName || ing.name,
             quantity: ing.quantity, unit: ing.unit, storeSection: ing.storeSection || 'other', sortOrder: index,
           })),
         },
@@ -62,7 +62,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         steps: req.body.steps || null,
         ingredients: {
           create: ingredients.map((ing: any, index: number) => ({
-            name: ing.name.toLowerCase().trim(), displayName: ing.displayName || ing.name,
+            name: ing.name.trim().replace(/\s+/g, ' ').toLowerCase(), displayName: ing.displayName || ing.name,
             quantity: ing.quantity, unit: ing.unit, storeSection: ing.storeSection || 'other', sortOrder: index,
           })),
         },
