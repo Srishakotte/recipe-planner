@@ -49,19 +49,42 @@ export default function SubstitutionsPage() {
   const [showSynonymForm, setShowSynonymForm] = useState(false);
   const [synSynonym, setSynSynonym] = useState('');
   const [synCanonical, setSynCanonical] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
 
   const handleCreateSub = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createSubstitution({ originalIngredient, substituteIngredient, quantityRatio, substituteUnit: substituteUnit || undefined, constraintType: subConstraintType, constraintValue: subConstraintValue });
-    setOriginalIngredient(''); setSubstituteIngredient(''); setQuantityRatio(1); setSubstituteUnit(''); setSubConstraintValue('');
-    setShowSubForm(false);
+    setFormError(null);
+    try {
+      await createSubstitution({ originalIngredient, substituteIngredient, quantityRatio, substituteUnit: substituteUnit || undefined, constraintType: subConstraintType, constraintValue: subConstraintValue }).unwrap();
+      setOriginalIngredient(''); setSubstituteIngredient(''); setQuantityRatio(1); setSubstituteUnit(''); setSubConstraintValue('');
+      setShowSubForm(false);
+    } catch (err: any) { setFormError(err?.data?.error || 'Could not create rule'); }
   };
 
   const handleCreateConstraint = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createConstraint({ constraintType, constraintValue });
-    setConstraintValue(''); setShowConstraintForm(false);
+    setFormError(null);
+    try {
+      await createConstraint({ constraintType, constraintValue }).unwrap();
+      setConstraintValue(''); setShowConstraintForm(false);
+    } catch (err: any) { setFormError(err?.data?.error || 'Could not add constraint'); }
   };
+
+  // "Use This" on a suggestion pre-fills the rule form
+  const applySuggestion = (original: string, substitute: string) => {
+    const ratio = /3\/4/.test(substitute) ? 0.75 : 1;
+    setOriginalIngredient(original.toLowerCase());
+    setSubstituteIngredient(substitute.replace(/\s*\(.*\)\s*$/, '').toLowerCase());
+    setQuantityRatio(ratio);
+    setSubConstraintValue(constraints?.[0]?.constraintValue || '');
+    setShowSubForm(true);
+    setSearchQuery('');
+  };
+
+  // a rule only applies while its constraint is in "My Dietary Constraints"
+  const normalize = (v: string) => v.toLowerCase().trim().replace(/[\s_]+/g, '-');
+  const activeValues = new Set((constraints || []).map(c => normalize(c.constraintValue)));
+  const isRuleActive = (value: string) => activeValues.has(normalize(value));
 
   // Filter common subs by search
   const filteredCommon = searchQuery
@@ -122,6 +145,13 @@ export default function SubstitutionsPage() {
         </div>
       )}
 
+      {formError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 flex justify-between">
+          <span>{formError}</span>
+          <button onClick={() => setFormError(null)} className="text-red-400">×</button>
+        </div>
+      )}
+
       {/* Search Substitutions */}
       <div className="relative">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
@@ -155,7 +185,7 @@ export default function SubstitutionsPage() {
                     </div>
                     <span className="text-xs text-gray-500 mt-0.5">{sub.similarity}% match</span>
                   </div>
-                  <button className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-semibold rounded-lg hover:bg-green-200">
+                  <button onClick={() => applySuggestion(sub.original, sub.substitute)} className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-semibold rounded-lg hover:bg-green-200">
                     Use This
                   </button>
                 </div>
@@ -237,7 +267,10 @@ export default function SubstitutionsPage() {
                 {constraintTypes.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
               <input type="text" value={subConstraintValue} onChange={(e) => setSubConstraintValue(e.target.value)}
-                placeholder="Constraint value (e.g. dairy-free)" required className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+                list="constraint-values" placeholder="Constraint value (e.g. dairy-free)" required className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+              <datalist id="constraint-values">
+                {[...new Set([...(constraints || []).map(c => c.constraintValue), 'dairy-free', 'vegetarian', 'vegan', 'gluten-free', 'no-peanuts', 'nut-free', 'egg-free'])].map(v => <option key={v} value={v} />)}
+              </datalist>
               <button type="submit" className="px-4 py-2.5 bg-green-600 text-white text-sm rounded-xl font-semibold">Create Rule</button>
             </div>
           </form>
@@ -271,6 +304,9 @@ export default function SubstitutionsPage() {
                     <span className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-lg text-xs font-medium">
                       {sub.constraintType}: {sub.constraintValue}
                     </span>
+                    {isRuleActive(sub.constraintValue)
+                      ? <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded-md text-[10px] font-semibold">applied</span>
+                      : <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md text-[10px] font-semibold" title="Add this constraint above to apply the rule">inactive</span>}
                   </td>
                   <td className="px-5 py-3.5 text-right">
                     <button onClick={() => deleteSubstitution(sub.id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete</button>

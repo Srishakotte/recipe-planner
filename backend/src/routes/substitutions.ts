@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../prisma';
+import { normalizeConstraintValue } from '../engine/generate';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.post('/', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'originalIngredient, substituteIngredient, constraintType, constraintValue required' }); return;
     }
     const sub = await prisma.substitution.create({
-      data: { originalIngredient: originalIngredient.toLowerCase().trim(), substituteIngredient: substituteIngredient.toLowerCase().trim(), quantityRatio: quantityRatio || 1.0, substituteUnit: substituteUnit || null, constraintType, constraintValue },
+      data: { originalIngredient: originalIngredient.toLowerCase().trim(), substituteIngredient: substituteIngredient.toLowerCase().trim(), quantityRatio: Number(quantityRatio) > 0 ? Number(quantityRatio) : 1.0, substituteUnit: substituteUnit || null, constraintType, constraintValue: normalizeConstraintValue(constraintValue) },
     });
     res.status(201).json(sub);
   } catch (error) { res.status(500).json({ error: 'Failed to create substitution' }); }
@@ -35,7 +36,10 @@ router.post('/constraints', async (req: Request, res: Response) => {
   try {
     const { constraintType, constraintValue } = req.body;
     if (!constraintType || !constraintValue) { res.status(400).json({ error: 'constraintType and constraintValue required' }); return; }
-    const constraint = await prisma.userConstraint.create({ data: { constraintType, constraintValue, isActive: true } });
+    const value = normalizeConstraintValue(constraintValue);
+    const existing = await prisma.userConstraint.findFirst({ where: { constraintValue: value } });
+    if (existing) { res.status(409).json({ error: `Constraint "${value}" is already active` }); return; }
+    const constraint = await prisma.userConstraint.create({ data: { constraintType, constraintValue: value, isActive: true } });
     res.status(201).json(constraint);
   } catch (error) { res.status(500).json({ error: 'Failed to create constraint' }); }
 });

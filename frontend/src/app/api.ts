@@ -37,16 +37,30 @@ export interface PantryItem {
   expirationDate?: string;
 }
 
+export interface GrocerySource {
+  recipeId: string;
+  recipeName: string;
+  contributionQty: number;
+  substitutedFrom?: string;
+  substitutionReason?: string;
+}
+
+export interface GroceryWarning {
+  type: 'unit_mismatch' | 'substitution_conflict' | 'pantry_conversion_failed' | 'density_missing' | 'override_reset' | 'quantity_increased';
+  message: string;
+  ingredientName: string;
+}
+
 export interface GroceryItem {
   id: string;
   ingredientName: string;
   computedQty: number;
   unit: string;
   storeSection: string;
-  sourceRecipes?: string[];
-  warnings?: string[];
+  sourceRecipes?: GrocerySource[] | null;
+  warnings?: GroceryWarning[] | null;
   isAdHoc: boolean;
-  overrideQty?: number;
+  overrideQty?: number | null;
   isChecked: boolean;
   isAlreadyHave: boolean;
 }
@@ -55,7 +69,7 @@ export interface GroceryListResponse {
   generationId: string;
   version: number;
   items: GroceryItem[];
-  warnings?: string[];
+  warnings?: GroceryWarning[];
   generatedAt: string;
 }
 
@@ -92,15 +106,15 @@ export const api = createApi({
     }),
     createRecipe: builder.mutation<Recipe, { name: string; description?: string; defaultServings: number; ingredients: Omit<Ingredient, 'id'>[] }>({
       query: (body) => ({ url: '/recipes', method: 'POST', body }),
-      invalidatesTags: ['Recipes'],
+      invalidatesTags: ['Recipes', 'MealPlan', 'GroceryList'],
     }),
     updateRecipe: builder.mutation<Recipe, { id: string; data: { name: string; description?: string; defaultServings: number; ingredients: Omit<Ingredient, 'id'>[] } }>({
       query: ({ id, data }) => ({ url: `/recipes/${id}`, method: 'PUT', body: data }),
-      invalidatesTags: ['Recipes'],
+      invalidatesTags: ['Recipes', 'MealPlan', 'GroceryList'],
     }),
     deleteRecipe: builder.mutation<void, string>({
       query: (id) => ({ url: `/recipes/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Recipes'],
+      invalidatesTags: ['Recipes', 'MealPlan', 'GroceryList'],
     }),
 
     // Meal Plans
@@ -160,7 +174,7 @@ export const api = createApi({
       query: ({ id, isChecked }) => ({ url: `/grocery/items/${id}/check`, method: 'PATCH', body: { isChecked } }),
       invalidatesTags: ['GroceryList'],
     }),
-    overrideGroceryItem: builder.mutation<GroceryItem, { id: string; overrideQty: number }>({
+    overrideGroceryItem: builder.mutation<GroceryItem, { id: string; overrideQty: number | null }>({
       query: ({ id, overrideQty }) => ({ url: `/grocery/items/${id}/override`, method: 'PATCH', body: { overrideQty } }),
       invalidatesTags: ['GroceryList'],
     }),
@@ -188,11 +202,11 @@ export const api = createApi({
     }),
     createSubstitution: builder.mutation<Substitution, Partial<Substitution>>({
       query: (body) => ({ url: '/substitutions', method: 'POST', body }),
-      invalidatesTags: ['Substitutions'],
+      invalidatesTags: ['Substitutions', 'GroceryList'],
     }),
     deleteSubstitution: builder.mutation<void, string>({
       query: (id) => ({ url: `/substitutions/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Substitutions'],
+      invalidatesTags: ['Substitutions', 'GroceryList'],
     }),
 
     // Constraints
@@ -216,11 +230,11 @@ export const api = createApi({
     }),
     createSynonym: builder.mutation<any, { synonym: string; canonicalName: string }>({
       query: (body) => ({ url: '/substitutions/synonyms', method: 'POST', body }),
-      invalidatesTags: ['Substitutions'],
+      invalidatesTags: ['Substitutions', 'GroceryList'],
     }),
     deleteSynonym: builder.mutation<void, string>({
       query: (id) => ({ url: `/substitutions/synonyms/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Substitutions'],
+      invalidatesTags: ['Substitutions', 'GroceryList'],
     }),
 
     // AI Endpoints

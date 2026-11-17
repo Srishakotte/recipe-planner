@@ -21,6 +21,7 @@ function App() {
           <Route path="grocery-list" element={<GroceryListPage />} />
           <Route path="pantry" element={<PantryPage />} />
           <Route path="substitutions" element={<SubstitutionsPage />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>

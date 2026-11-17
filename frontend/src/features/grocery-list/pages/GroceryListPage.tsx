@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   useGetGroceryListQuery,
   useGenerateGroceryListMutation,
@@ -13,6 +13,23 @@ import {
 
 const tabs = ['All', 'Need To Buy', 'In Pantry', 'Purchased'];
 
+// amount the user will actually buy: their edit if any, else what the plan needs
+const qtyOf = (i: GroceryItem) => i.overrideQty ?? i.computedQty;
+
+function substitutedFrom(item: GroceryItem): string[] {
+  const names = (item.sourceRecipes || []).map(s => s.substitutedFrom).filter((n): n is string => !!n);
+  return [...new Set(names)];
+}
+
+function sourceSummary(item: GroceryItem): string {
+  const counts = new Map<string, number>();
+  for (const s of item.sourceRecipes || []) {
+    const name = typeof s === 'string' ? s : s.recipeName;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(', ');
+}
+
 export default function GroceryListPage() {
   const [activeTab, setActiveTab] = useState('All');
   const [search, setSearch] = useState('');
@@ -26,7 +43,7 @@ export default function GroceryListPage() {
   const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
   const [costLoading, setCostLoading] = useState(false);
 
-  const { data: groceryList, isLoading } = useGetGroceryListQuery();
+  const { data: groceryList, isLoading } = useGetGroceryListQuery(undefined, { refetchOnMountOrArgChange: true });
   const [generateList, { isLoading: isGenerating }] = useGenerateGroceryListMutation();
   const [checkItem] = useCheckGroceryItemMutation();
   const [overrideItem] = useOverrideGroceryItemMutation();
@@ -35,29 +52,35 @@ export default function GroceryListPage() {
   const [deleteItem] = useDeleteGroceryItemMutation();
   const [estimateCost] = useAiEstimateCostMutation();
 
-  // Auto-generate grocery list on first load if empty
-  useEffect(() => {
-    if (!isLoading && (!groceryList || !groceryList.items || groceryList.items.length === 0)) {
-      generateList();
-    }
-  }, [isLoading, groceryList]);
+  // GET /grocery regenerates on the server whenever the plan, pantry, recipes or
+  // substitution rules changed, so the list here is always current (the query refetches
+  // on mount in case the cached copy is from before a change made on another page).
 
   const items = groceryList?.items || [];
+
+  // one-time notices produced when the meal plan changed under the user's edits
+  const planChangeNotices = items.flatMap(i => (i.warnings || [])
+    .filter(w => w.type === 'override_reset' || w.type === 'quantity_increased')
+    .map(w => ({ item: i, warning: w })));
+
+  const handleResetOverride = async (item: GroceryItem) => {
+    await overrideItem({ id: item.id, overrideQty: null });
+  };
 
   // Filter by tab
   const filteredItems = items.filter(item => {
     if (search && !item.ingredientName.toLowerCase().includes(search.toLowerCase())) return false;
     switch (activeTab) {
-      case 'Need To Buy': return !item.isChecked && !item.isAlreadyHave && item.computedQty > 0;
-      case 'In Pantry': return item.isAlreadyHave || item.computedQty === 0;
+      case 'Need To Buy': return !item.isChecked && !item.isAlreadyHave && qtyOf(item) > 0;
+      case 'In Pantry': return item.isAlreadyHave || qtyOf(item) === 0;
       case 'Purchased': return item.isChecked;
       default: return true;
     }
   });
 
   // Stats
-  const needToBuy = items.filter(i => !i.isChecked && !i.isAlreadyHave && i.computedQty > 0);
-  const inPantry = items.filter(i => i.isAlreadyHave || i.computedQty === 0);
+  const needToBuy = items.filter(i => !i.isChecked && !i.isAlreadyHave && qtyOf(i) > 0);
+  const inPantry = items.filter(i => i.isAlreadyHave || qtyOf(i) === 0);
   const purchased = items.filter(i => i.isChecked);
 
   // Group by section
@@ -84,7 +107,7 @@ export default function GroceryListPage() {
   };
 
   const handleExportCSV = () => {
-    const buyItems = items.filter(i => i.computedQty > 0 && !i.isAlreadyHave);
+    const buyItems = items.filter(i => qtyOf(i) > 0 && !i.isAlreadyHave && !i.isChecked);
     const csv = ['Item,Quantity,Unit,Section']
       .concat(buyItems.map(i => `"${i.ingredientName}",${i.overrideQty ?? i.computedQty},"${i.unit}","${i.storeSection}"`))
       .join('\n');
@@ -233,6 +256,21 @@ export default function GroceryListPage() {
         </div>
       )}
 
+      {/* Plan-change notices: edits that were reset because the meal plan changed */}
+      {planChangeNotices.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <p className="text-sm font-semibold text-amber-800">🔁 Your meal plan changed. {planChangeNotices.length} edited item{planChangeNotices.length > 1 ? 's were' : ' was'} updated</p>
+          <ul className="mt-2 space-y-1">
+            {planChangeNotices.map(({ item, warning }, i) => (
+              <li key={item.id + i} className="text-xs text-amber-700">
+                <span className="font-semibold">{item.ingredientName}:</span> {warning.message}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-amber-600 mt-2">Edit the quantity or tick the item again to dismiss.</p>
+        </div>
+      )}
+
       {/* Shopping Progress Bar */}
       {items.length > 0 && (
         <div className="bg-white rounded-2xl p-4 border border-gray-100">
@@ -295,12 +333,19 @@ export default function GroceryListPage() {
                       {item.computedQty === 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">✅ in pantry</span>}
                       {item.isAdHoc && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md font-medium">custom</span>}
                       {item.isAlreadyHave && item.computedQty > 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">have it</span>}
-                      {/* Source recipes */}
-                      {item.sourceRecipes && (item.sourceRecipes as any[]).length > 0 && (
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          From: {(item.sourceRecipes as any[]).map((s: any) => typeof s === 'string' ? s : s.recipeName).join(', ')}
-                        </p>
+                      {item.overrideQty != null && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-md font-medium" title={`Plan needs ${item.computedQty} ${item.unit}`}>edited</span>}
+                      {/* Substitution: which original ingredient(s) this replaces */}
+                      {substitutedFrom(item).length > 0 && (
+                        <p className="text-xs text-violet-600 mt-0.5">🔄 instead of {substitutedFrom(item).join(', ')}</p>
                       )}
+                      {/* Source recipes (deduplicated: "Bolognese ×2") */}
+                      {item.sourceRecipes && item.sourceRecipes.length > 0 && (
+                        <p className="text-xs text-gray-400 mt-0.5">From: {sourceSummary(item)}</p>
+                      )}
+                      {/* Engine warnings (constraint conflicts, unit problems) */}
+                      {(item.warnings || []).filter(w => w.type !== 'override_reset' && w.type !== 'quantity_increased').map((w, i) => (
+                        <p key={i} className="text-xs text-red-600 mt-0.5">⚠️ {w.message}</p>
+                      ))}
                     </div>
                     {/* Quantity */}
                     {overrideId === item.id ? (
@@ -311,12 +356,21 @@ export default function GroceryListPage() {
                         <button onClick={() => setOverrideId(null)} className="text-gray-400 text-xs">✕</button>
                       </div>
                     ) : (
-                      <button
-                        onClick={() => { setOverrideId(item.id); setOverrideValue(item.overrideQty ?? item.computedQty); }}
-                        className="text-sm text-gray-600 hover:text-green-600 font-medium px-2 py-1 rounded-lg hover:bg-green-50 transition-colors"
-                      >
-                        {item.overrideQty ?? item.computedQty} {item.unit}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {item.overrideQty != null && (
+                          <span className="text-xs text-gray-400 line-through" title="Amount the meal plan needs">{item.computedQty}</span>
+                        )}
+                        <button
+                          onClick={() => { setOverrideId(item.id); setOverrideValue(item.overrideQty ?? item.computedQty); }}
+                          className={`text-sm font-medium px-2 py-1 rounded-lg hover:bg-green-50 transition-colors ${item.overrideQty != null ? 'text-purple-700' : 'text-gray-600 hover:text-green-600'}`}
+                          title="Click to change the amount"
+                        >
+                          {item.overrideQty ?? item.computedQty} {item.unit}
+                        </button>
+                        {item.overrideQty != null && (
+                          <button onClick={() => handleResetOverride(item)} className="text-xs text-gray-400 hover:text-purple-700" title={`Reset to ${item.computedQty} ${item.unit}`}>↺</button>
+                        )}
+                      </div>
                     )}
                     {/* Actions */}
                     <div className="flex items-center gap-1">

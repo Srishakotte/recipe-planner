@@ -5,6 +5,8 @@ export interface IngredientLine {
   quantity: number;
   unit: string;
   storeSection: string;
+  substitutedFrom?: string;
+  substitutionReason?: string;
 }
 
 export interface PantryEntry {
@@ -45,7 +47,7 @@ export interface DensityEntry {
 }
 
 export interface GroceryWarning {
-  type: 'unit_mismatch' | 'substitution_conflict' | 'pantry_conversion_failed' | 'density_missing';
+  type: 'unit_mismatch' | 'substitution_conflict' | 'pantry_conversion_failed' | 'density_missing' | 'override_reset' | 'quantity_increased';
   message: string;
   ingredientName: string;
 }
@@ -54,6 +56,8 @@ export interface GrocerySourceRecipe {
   recipeId: string;
   recipeName: string;
   contributionQty: number;
+  substitutedFrom?: string;
+  substitutionReason?: string;
 }
 
 export interface GeneratedGroceryItem {
