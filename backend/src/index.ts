@@ -1,6 +1,10 @@
+import 'dotenv/config'; // must be first: modules below read process.env at import time
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+import prisma from './prisma';
 import recipeRoutes from './routes/recipes';
 import mealPlanRoutes from './routes/mealPlan';
 import pantryRoutes from './routes/pantry';
@@ -8,57 +12,43 @@ import groceryRoutes from './routes/grocery';
 import substitutionRoutes from './routes/substitutions';
 import analyticsRoutes from './routes/analytics';
 import aiRoutes from './routes/ai';
-
-dotenv.config();
+import { aiStatus } from './ai/client';
+import { asyncHandler, errorHandler } from './lib/http';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-console.log("GEMINI_API_KEY:", process.env.GEMINI_API_KEY?.slice(0, 10));
-console.log("MODEL:", process.env.GEMINI_MODEL);
-
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
-// health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), ai: aiStatus() });
 });
 
-// reset database (start fresh — clears all user data)
-app.post('/api/reset', async (req, res) => {
-  try {
-    const prisma = require('./prisma').default;
-    // delete in correct order (foreign key constraints)
-    await prisma.groceryItem.deleteMany();
-    await prisma.groceryGeneration.deleteMany();
-    await prisma.mealPlanEntry.deleteMany();
-    await prisma.ingredient.deleteMany();
-    await prisma.recipe.deleteMany();
-    await prisma.pantryItem.deleteMany();
-    await prisma.substitution.deleteMany();
-    await prisma.userConstraint.deleteMany();
-    await prisma.ingredientSynonym.deleteMany();
-    await prisma.unitConversion.deleteMany();
-    await prisma.ingredientDensity.deleteMany();
-    res.json({ message: 'Database cleared. Start fresh!' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// Start fresh: clears the user's data. Reference data the engine needs
+// (unit conversions, densities, synonyms) is kept so conversions keep working.
+app.post('/api/reset', asyncHandler(async (_req, res) => {
+  await prisma.$transaction([
+    prisma.groceryItem.deleteMany(),
+    prisma.groceryGeneration.deleteMany(),
+    prisma.mealPlanEntry.deleteMany(),
+    prisma.ingredient.deleteMany(),
+    prisma.recipe.deleteMany(),
+    prisma.pantryItem.deleteMany(),
+    prisma.substitution.deleteMany(),
+    prisma.userConstraint.deleteMany(),
+  ]);
+  res.json({ message: 'Database cleared. Start fresh!' });
+}));
 
-// reseed database (reload sample data)
-app.post('/api/reseed', async (req, res) => {
-  try {
-    const { execSync } = require('child_process');
-    execSync('npx ts-node prisma/seed.ts', { cwd: __dirname + '/..', timeout: 30000 });
-    res.json({ message: 'Sample data reloaded!' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// reload the sample data (runs the seed script)
+app.post('/api/reseed', asyncHandler(async (_req, res) => {
+  const backendRoot = path.resolve(__dirname, '..');
+  const tsNode = path.join(backendRoot, 'node_modules', 'ts-node', 'dist', 'bin.js');
+  await promisify(execFile)(process.execPath, [tsNode, 'prisma/seed.ts'], { cwd: backendRoot, timeout: 60_000 });
+  res.json({ message: 'Sample data reloaded!' });
+}));
 
-// routes
 app.use('/api/recipes', recipeRoutes);
 app.use('/api/meal-plans', mealPlanRoutes);
 app.use('/api/pantry', pantryRoutes);
@@ -67,8 +57,12 @@ app.use('/api/substitutions', substitutionRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai', aiRoutes);
 
+app.use(errorHandler);
+
 app.listen(PORT, () => {
+  const ai = aiStatus();
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log(ai.enabled ? `AI: Gemini (${ai.model})` : 'AI: off (no GEMINI_API_KEY) — smart features use built-in fallbacks');
 });
 
 export default app;

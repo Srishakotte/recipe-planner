@@ -1,95 +1,52 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import prisma from '../prisma';
+import { asyncHandler, dateRange, startOfToday, toIsoDate } from '../lib/http';
 
 const router = Router();
 
-// GET /api/analytics/summary
-router.get('/summary', async (req: Request, res: Response) => {
-  try {
-    const [
-      totalRecipes,
-      totalPantryItems,
-      mealPlanEntries,
-      groceryGen,
-    ] = await Promise.all([
-      prisma.recipe.count(),
-      prisma.pantryItem.count(),
-      prisma.mealPlanEntry.findMany({
-        include: { recipe: true },
-      }),
-      prisma.groceryGeneration.findFirst({
-        orderBy: { version: 'desc' },
-        include: { items: true },
-      }),
-    ]);
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-    // meals per day this week
-    const mealsPerDay: Record<string, number> = {};
-    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    for (const entry of mealPlanEntries) {
-      const date = new Date(entry.planDate);
-      const dayName = daysOfWeek[date.getDay()];
-      mealsPerDay[dayName] = (mealsPerDay[dayName] || 0) + 1;
-    }
+function mondayOf(date: Date): string {
+  const d = new Date(date);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return toIsoDate(d);
+}
 
-    // top ingredients across all planned meals
-    const ingredientCount: Record<string, number> = {};
-    for (const entry of mealPlanEntries) {
-      if (entry.recipe) {
-        const recipe = await prisma.recipe.findUnique({
-          where: { id: entry.recipeId },
-          include: { ingredients: true },
-        });
-        if (recipe) {
-          for (const ing of recipe.ingredients) {
-            ingredientCount[ing.name] = (ingredientCount[ing.name] || 0) + 1;
-          }
-        }
-      }
-    }
-    const topIngredients = Object.entries(ingredientCount)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, count]) => ({ name, count }));
+const countBy = <T>(items: T[], key: (item: T) => string) =>
+  items.reduce<Record<string, number>>((acc, item) => { const k = key(item); acc[k] = (acc[k] || 0) + 1; return acc; }, {});
+const toPairs = (counts: Record<string, number>) => Object.entries(counts).map(([name, value]) => ({ name, value }));
 
-    // grocery list stats
-    const groceryItems = groceryGen?.items || [];
-    const groceryStats = {
+// GET /api/analytics/summary?weekStart=YYYY-MM-DD (defaults to the current week)
+router.get('/summary', asyncHandler(async (req, res) => {
+  const weekStart = typeof req.query.weekStart === 'string' ? req.query.weekStart : mondayOf(startOfToday());
+  const [totalRecipes, totalPantryItems, weekMeals, groceryGen] = await Promise.all([
+    prisma.recipe.count(),
+    prisma.pantryItem.count(),
+    prisma.mealPlanEntry.findMany({
+      where: { planDate: dateRange(weekStart) },
+      include: { recipe: { select: { ingredients: { select: { name: true } } } } },
+    }),
+    prisma.groceryGeneration.findFirst({ orderBy: { version: 'desc' }, include: { items: true } }),
+  ]);
+
+  const perDay = countBy(weekMeals, m => DAYS[(m.planDate.getUTCDay() + 6) % 7]);
+  const ingredientCounts = countBy(weekMeals.flatMap(m => m.recipe.ingredients), i => i.name);
+  const groceryItems = groceryGen?.items ?? [];
+
+  res.json({
+    weekStart,
+    overview: { totalRecipes, totalPantryItems, totalMealsPlanned: weekMeals.length, groceryListItems: groceryItems.length },
+    mealsPerDay: DAYS.map(day => ({ day, meals: perDay[day] || 0 })),
+    topIngredients: Object.entries(ingredientCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count })),
+    groceryStats: {
       total: groceryItems.length,
       checked: groceryItems.filter(i => i.isChecked).length,
       unchecked: groceryItems.filter(i => !i.isChecked).length,
       adHoc: groceryItems.filter(i => i.isAdHoc).length,
-    };
-
-    // section breakdown
-    const sectionBreakdown: Record<string, number> = {};
-    for (const item of groceryItems) {
-      sectionBreakdown[item.storeSection] = (sectionBreakdown[item.storeSection] || 0) + 1;
-    }
-
-    // meals per slot
-    const slotBreakdown: Record<string, number> = {};
-    for (const entry of mealPlanEntries) {
-      slotBreakdown[entry.mealSlot] = (slotBreakdown[entry.mealSlot] || 0) + 1;
-    }
-
-    res.json({
-      overview: {
-        totalRecipes,
-        totalPantryItems,
-        totalMealsPlanned: mealPlanEntries.length,
-        groceryListItems: groceryStats.total,
-      },
-      mealsPerDay: daysOfWeek.map(day => ({ day, meals: mealsPerDay[day] || 0 })),
-      topIngredients,
-      groceryStats,
-      sectionBreakdown: Object.entries(sectionBreakdown).map(([name, value]) => ({ name, value })),
-      slotBreakdown: Object.entries(slotBreakdown).map(([name, value]) => ({ name, value })),
-    });
-  } catch (error) {
-    console.error('Analytics error:', error);
-    res.status(500).json({ error: 'Failed to fetch analytics' });
-  }
-});
+    },
+    sectionBreakdown: toPairs(countBy(groceryItems, i => i.storeSection)),
+    slotBreakdown: toPairs(countBy(weekMeals, m => m.mealSlot)),
+  });
+}));
 
 export default router;

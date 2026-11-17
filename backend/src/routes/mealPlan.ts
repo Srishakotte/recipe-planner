@@ -1,96 +1,72 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+import { z } from 'zod';
 import prisma from '../prisma';
+import { asyncHandler, parseBody, HttpError, dateRange, startOfToday } from '../lib/http';
 
 const router = Router();
 
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const weekStart = req.query.weekStart as string | undefined;
-    let where: any = {};
-    if (weekStart) {
-      const start = new Date(weekStart);
-      const end = new Date(start); end.setDate(end.getDate() + 7);
-      where.planDate = { gte: start, lt: end };
-    }
-    const entries = await prisma.mealPlanEntry.findMany({
-      where, include: { recipe: { include: { ingredients: true } } },
-      orderBy: [{ planDate: 'asc' }, { mealSlot: 'asc' }],
-    });
-    res.json(entries);
-  } catch (error) { res.status(500).json({ error: 'Failed to fetch meal plan' }); }
+const entrySchema = z.object({
+  recipeId: z.string().min(1),
+  planDate: z.string().min(1),
+  mealSlot: z.string().optional(),
+  servings: z.coerce.number().int().min(1).max(50).optional(),
+  isLeftover: z.boolean().optional(),
+  leftoverExpiryDate: z.string().optional().nullable(),
 });
 
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const { recipeId, planDate, mealSlot, servings } = req.body;
-    if (!recipeId || !planDate) { res.status(400).json({ error: 'recipeId and planDate required' }); return; }
-    const recipe = await prisma.recipe.findUnique({ where: { id: recipeId } });
-    if (!recipe) { res.status(404).json({ error: 'Recipe not found' }); return; }
-    const entry = await prisma.mealPlanEntry.create({
-      data: {
-        recipeId,
-        planDate: new Date(planDate),
-        mealSlot: mealSlot || 'dinner',
-        servings: servings || recipe.defaultServings,
-        isLeftover: req.body.isLeftover || false,
-        leftoverExpiryDate: req.body.leftoverExpiryDate ? new Date(req.body.leftoverExpiryDate) : null,
-      },
-      include: { recipe: { include: { ingredients: true } } },
-    });
-    res.status(201).json(entry);
-  } catch (error) { res.status(500).json({ error: 'Failed to add meal plan entry' }); }
-});
+const hidden = { embedding: true, embeddingKey: true } as const;
+const withRecipe = { recipe: { include: { ingredients: true }, omit: hidden } };
+const toDate = (value: string | null | undefined) => (value ? new Date(value) : null);
 
-router.put('/:id', async (req: Request, res: Response) => {
-  try {
-    const { recipeId, planDate, mealSlot, servings, isLeftover, leftoverExpiryDate } = req.body;
-    const data: any = {};
-    if (recipeId) data.recipeId = recipeId;
-    if (planDate) data.planDate = new Date(planDate);
-    if (mealSlot) data.mealSlot = mealSlot;
-    if (servings !== undefined && servings !== null) data.servings = servings;
-    if (isLeftover !== undefined) data.isLeftover = isLeftover;
-    // Handle leftoverExpiryDate: null means clear it, string means set it
-    if (leftoverExpiryDate !== undefined) {
-      data.leftoverExpiryDate = leftoverExpiryDate ? new Date(leftoverExpiryDate) : null;
-    }
-    // If unmarking leftover, also clear the expiry date
-    if (isLeftover === false) {
-      data.leftoverExpiryDate = null;
-    }
-    const entry = await prisma.mealPlanEntry.update({
-      where: { id: req.params.id },
-      data,
-      include: { recipe: { include: { ingredients: true } } },
-    });
-    res.json(entry);
-  } catch (error) { res.status(500).json({ error: 'Failed to update meal plan entry' }); }
-});
+router.get('/', asyncHandler(async (req, res) => {
+  const weekStart = typeof req.query.weekStart === 'string' ? req.query.weekStart : undefined;
+  res.json(await prisma.mealPlanEntry.findMany({
+    where: weekStart ? { planDate: dateRange(weekStart) } : {},
+    include: withRecipe, orderBy: [{ planDate: 'asc' }, { mealSlot: 'asc' }],
+  }));
+}));
 
-// GET available leftovers (not expired)
-router.get('/leftovers', async (req: Request, res: Response) => {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const entries = await prisma.mealPlanEntry.findMany({
-      where: {
-        isLeftover: true,
-        OR: [
-          { leftoverExpiryDate: null },
-          { leftoverExpiryDate: { gte: today } },
-        ],
-      },
-      include: { recipe: true },
-    });
-    res.json(entries);
-  } catch (error) { res.status(500).json({ error: 'Failed to fetch leftovers' }); }
-});
+// available leftovers (not expired)
+router.get('/leftovers', asyncHandler(async (_req, res) => {
+  res.json(await prisma.mealPlanEntry.findMany({
+    where: { isLeftover: true, OR: [{ leftoverExpiryDate: null }, { leftoverExpiryDate: { gte: startOfToday() } }] },
+    include: { recipe: { omit: hidden } },
+  }));
+}));
 
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    await prisma.mealPlanEntry.delete({ where: { id: req.params.id } });
-    res.json({ message: 'Meal plan entry deleted' });
-  } catch (error) { res.status(500).json({ error: 'Failed to delete meal plan entry' }); }
-});
+router.post('/', asyncHandler(async (req, res) => {
+  const body = parseBody(entrySchema, req.body);
+  const recipe = await prisma.recipe.findUnique({ where: { id: body.recipeId }, select: { defaultServings: true } });
+  if (!recipe) throw new HttpError(404, 'Recipe not found');
+  res.status(201).json(await prisma.mealPlanEntry.create({
+    data: {
+      recipeId: body.recipeId, planDate: new Date(body.planDate), mealSlot: body.mealSlot ?? 'dinner',
+      servings: body.servings ?? recipe.defaultServings,
+      isLeftover: body.isLeftover ?? false, leftoverExpiryDate: toDate(body.leftoverExpiryDate),
+    },
+    include: withRecipe,
+  }));
+}));
+
+router.put('/:id', asyncHandler(async (req, res) => {
+  // no defaults in the schema, so only fields that were sent are updated
+  const body = parseBody(entrySchema.partial(), req.body);
+  const data = {
+    ...(body.recipeId && { recipeId: body.recipeId }),
+    ...(body.planDate && { planDate: new Date(body.planDate) }),
+    ...(body.mealSlot && { mealSlot: body.mealSlot }),
+    ...(body.servings !== undefined && { servings: body.servings }),
+    ...(body.isLeftover !== undefined && { isLeftover: body.isLeftover }),
+    ...(body.leftoverExpiryDate !== undefined && { leftoverExpiryDate: toDate(body.leftoverExpiryDate) }),
+    // unmarking a leftover also clears its expiry
+    ...(body.isLeftover === false && { leftoverExpiryDate: null }),
+  };
+  res.json(await prisma.mealPlanEntry.update({ where: { id: req.params.id }, data, include: withRecipe }));
+}));
+
+router.delete('/:id', asyncHandler(async (req, res) => {
+  await prisma.mealPlanEntry.delete({ where: { id: req.params.id } });
+  res.json({ message: 'Meal plan entry deleted' });
+}));
 
 export default router;

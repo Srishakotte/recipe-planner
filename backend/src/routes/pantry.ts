@@ -1,46 +1,39 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+import { z } from 'zod';
 import prisma from '../prisma';
+import { asyncHandler, parseBody } from '../lib/http';
 
 const router = Router();
 
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const items = await prisma.pantryItem.findMany({ orderBy: { name: 'asc' } });
-    res.json(items);
-  } catch (error) { res.status(500).json({ error: 'Failed to fetch pantry' }); }
+const pantrySchema = z.object({
+  name: z.string().trim().min(1).transform(s => s.toLowerCase()),
+  quantity: z.coerce.number().min(0),
+  unit: z.string().trim().min(1),
+  expirationDate: z.string().optional().nullable(),
 });
 
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const { name, quantity, unit, expirationDate } = req.body;
-    if (!name || quantity === undefined || !unit) { res.status(400).json({ error: 'name, quantity, and unit required' }); return; }
-    const item = await prisma.pantryItem.create({
-      data: { name: name.toLowerCase().trim(), quantity, unit, expirationDate: expirationDate ? new Date(expirationDate) : null },
-    });
-    res.status(201).json(item);
-  } catch (error) { res.status(500).json({ error: 'Failed to add pantry item' }); }
-});
+const toDate = (value: string | null | undefined) => (value ? new Date(value) : null);
 
-router.put('/:id', async (req: Request, res: Response) => {
-  try {
-    const { name, quantity, unit, expirationDate } = req.body;
-    const item = await prisma.pantryItem.update({
-      where: { id: req.params.id },
-      data: {
-        ...(name && { name: name.toLowerCase().trim() }),
-        ...(quantity !== undefined && { quantity }), ...(unit && { unit }),
-        ...(expirationDate !== undefined && { expirationDate: expirationDate ? new Date(expirationDate) : null }),
-      },
-    });
-    res.json(item);
-  } catch (error) { res.status(500).json({ error: 'Failed to update pantry item' }); }
-});
+router.get('/', asyncHandler(async (_req, res) => {
+  res.json(await prisma.pantryItem.findMany({ orderBy: { name: 'asc' } }));
+}));
 
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    await prisma.pantryItem.delete({ where: { id: req.params.id } });
-    res.json({ message: 'Pantry item deleted' });
-  } catch (error) { res.status(500).json({ error: 'Failed to delete pantry item' }); }
-});
+router.post('/', asyncHandler(async (req, res) => {
+  const body = parseBody(pantrySchema, req.body);
+  res.status(201).json(await prisma.pantryItem.create({ data: { ...body, expirationDate: toDate(body.expirationDate) } }));
+}));
+
+router.put('/:id', asyncHandler(async (req, res) => {
+  const { expirationDate, ...rest } = parseBody(pantrySchema.partial(), req.body);
+  res.json(await prisma.pantryItem.update({
+    where: { id: req.params.id },
+    data: { ...rest, ...(expirationDate !== undefined && { expirationDate: toDate(expirationDate) }) },
+  }));
+}));
+
+router.delete('/:id', asyncHandler(async (req, res) => {
+  await prisma.pantryItem.delete({ where: { id: req.params.id } });
+  res.json({ message: 'Pantry item deleted' });
+}));
 
 export default router;

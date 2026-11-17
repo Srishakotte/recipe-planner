@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["omitApi"]
 }
 
 datasource db {
@@ -13,6 +14,8 @@ model Recipe {
   defaultServings Int      @default(2)
   description     String?  @db.Text
   steps           String?  @db.Text
+  embedding       Json?    // vector for semantic search (RAG), filled lazily
+  embeddingKey    String?  // hash of the text that was embedded; stale when it changes
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

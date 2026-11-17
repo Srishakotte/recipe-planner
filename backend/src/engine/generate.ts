@@ -241,7 +241,7 @@ export function findSubstitution<T extends SubstitutionRule & { original: string
   return candidates[0];
 }
 
-const CONSTRAINT_KEYWORDS: Record<string, string[]> = {
+export const CONSTRAINT_KEYWORDS: Record<string, string[]> = {
   'dairy-free': ['milk', 'butter', 'cream', 'cheese', 'parmesan', 'cheddar', 'mozzarella', 'paneer', 'yogurt', 'ghee', 'curd', 'whey'],
   'lactose-free': ['milk', 'cream', 'cheese', 'parmesan', 'cheddar', 'mozzarella', 'paneer', 'yogurt', 'curd', 'whey'],
   'vegetarian': ['chicken', 'beef', 'pork', 'lamb', 'mutton', 'fish', 'shrimp', 'prawn', 'bacon', 'ham', 'turkey', 'salmon', 'tuna', 'sausage', 'anchovy'],
