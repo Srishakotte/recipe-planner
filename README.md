@@ -469,13 +469,16 @@ substitutions:
 - GET/POST/DELETE /api/substitutions/constraints
 - GET/POST/DELETE /api/substitutions/synonyms
 
-ai (all optional):
-- GET /api/ai/test
-- POST /api/ai/suggest-recipes
-- POST /api/ai/estimate-nutrition
-- POST /api/ai/estimate-cost
-- POST /api/ai/suggest-substitution
-- POST /api/ai/weekly-plan
+smart kitchen (every response is { data, source: "ai" | "fallback" }):
+- GET /api/ai/status
+- GET /api/ai/recommend?q= (cook from pantry, semantic search with Gemini embeddings)
+- GET /api/ai/dinner (what's for dinner)
+- GET /api/ai/fix-recipe/:id (substitutes for missing / conflicting ingredients)
+- POST /api/ai/substitutes { ingredient }
+- POST /api/ai/ideas (new recipes from your pantry)
+- GET /api/ai/nutrition?weekStart=
+- POST /api/ai/cost
+- POST /api/ai/assistant { messages } (needs a key; tool-calling chat)
 
 system:
 - POST /api/reset (clear all data)
@@ -518,19 +521,26 @@ pure function engine: testable independently of database, deterministic, easy to
 
 ---
 
-## AI Usage
+## Smart Features (Gemini + Fallbacks)
 
-The app uses Gemini AI for optional features:
-- Recipe suggestions based on pantry items
-- Nutrition estimation from weekly meal plan
-- Grocery cost estimation in INR
-- Substitution suggestions
-- Weekly plan generation
+Rule: **the AI decides, the engine computes.** Gemini picks, explains and searches; quantities, conversions and the grocery list always come from the tested engine. Every smart feature also works without a key using built-in logic, and the UI shows an `AI` or `Basic` badge so you know which answered.
 
-All core logic (scaling, conversion, consolidation, pantry subtraction, conflict resolution) is hand-written. The app works fully without AI. If Gemini is unavailable, everything falls back to hardcoded logic.
+| Feature | With Gemini | Without a key |
+|---|---|---|
+| Cook from your pantry | Semantic search (RAG) over your recipes using Gemini embeddings, stored per recipe and refreshed only when a recipe changes | Keyword search |
+| Ranking (both modes) | Pantry coverage, items expiring soon, dietary constraints, recently eaten | same |
+| What's for dinner | Picks tonight's meal and writes a one-line reason | Same pick, reason built from the facts |
+| Recipe fixer / substitutes | Substitutes that respect your diet and prefer pantry items; one click saves a rule | Your rules + a built-in list of common swaps |
+| Ideas from your pantry | 3 new recipes built around what you have; save with one click | Your best-matching saved recipes |
+| Nutrition | Per-person daily estimate | USDA-based table (shows when it can't cover an ingredient) |
+| Grocery cost (INR) | Estimate | Not shown (no made-up numbers) |
+| Kitchen assistant | Chat that reads your recipes, pantry, plan and list through tools, and proposes meal changes you confirm with one click | Hidden |
+
+How it's built: one module (`backend/src/ai/client.ts`) talks to Gemini. Structured JSON output is validated with zod, answers are cached and rate-limited for the free tier, and `withFallback()` makes every feature degrade gracefully. Feature logic lives in `backend/src/services/`.
+
+Setup: get a free key at https://aistudio.google.com/apikey and set `GEMINI_API_KEY` in `backend/.env`, then restart the backend. Optional: `GEMINI_MODEL` (default `gemini-2.5-flash`), `GEMINI_RPM` (default 10). After pulling this change, run `npx prisma db push` once (recipes gained two columns for search embeddings).
 
 Package: @google/genai
-Model: gemini-2.5-flash
 
 ---
 

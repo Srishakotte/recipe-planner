@@ -1,320 +1,122 @@
 import { useState } from 'react';
-import {
-  useGetRecipesQuery,
-  useDeleteRecipeMutation,
-  useCreateRecipeMutation,
-  useAiSuggestRecipesMutation,
-  Recipe,
-} from '../../../app/api';
+import { BookOpen, CalendarPlus, Pencil, Plus, Search, Trash2, Users, Wand2 } from 'lucide-react';
+import { useDeleteRecipeMutation, useGetRecipesQuery, type Recipe } from '../../../app/api';
+import { sectionOf } from '../../../shared/constants';
+import { Badge, Button, Card, ConfirmButton, EmptyState, IconButton, Input, Modal, PageHeader, Skeleton } from '../../../shared/ui';
+import { errorMessage, toast } from '../../../shared/components/Toast';
 import RecipeForm from '../components/RecipeForm';
+import PlanMealModal, { type PlanTarget } from '../../kitchen/PlanMealModal';
+import RecipeFixModal from '../../kitchen/RecipeFixModal';
+import RecipeIdeas from '../../kitchen/RecipeIdeas';
 
-const mealTypes = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snack'];
-const defaultImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop&q=80';
+// a stable soft colour per recipe instead of the same stock photo for everything
+const TILE_COLOURS = ['bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-sky-100 text-sky-700', 'bg-rose-100 text-rose-700', 'bg-violet-100 text-violet-700', 'bg-lime-100 text-lime-700'];
+const tileColour = (name: string) => TILE_COLOURS[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % TILE_COLOURS.length];
+const initials = (name: string) => name.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+function RecipeDetail({ recipe, onClose, onEdit, onPlan, onFix }: { recipe: Recipe | null; onClose: () => void; onEdit: () => void; onPlan: () => void; onFix: () => void }) {
+  if (!recipe) return null;
+  const steps = (recipe.steps ?? '').split(/\n+/).map(s => s.replace(/^\d+[.)]\s*/, '').trim()).filter(Boolean);
+  return (
+    <Modal open onClose={onClose} wide title={recipe.name}
+      footer={<>
+        <Button variant="secondary" icon={Pencil} onClick={onEdit}>Edit</Button>
+        <Button variant="secondary" icon={Wand2} onClick={onFix}>Check pantry</Button>
+        <Button icon={CalendarPlus} onClick={onPlan}>Plan</Button>
+      </>}>
+      {recipe.description && <p className="mb-4 text-sm text-slate-600">{recipe.description}</p>}
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Ingredients · {recipe.defaultServings} servings</p>
+          <ul className="space-y-1.5 text-sm">
+            {recipe.ingredients.map(i => (
+              <li key={i.id} className="flex items-center justify-between gap-2">
+                <span className="text-slate-800">{i.displayName || i.name}</span>
+                <span className="flex items-center gap-2 text-slate-500">{i.quantity} {i.unit}<Badge>{sectionOf(i.storeSection).label}</Badge></span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Steps</p>
+          {steps.length ? <ol className="list-decimal space-y-1.5 pl-4 text-sm text-slate-700">{steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+            : <p className="text-sm text-slate-500">No steps yet. Edit the recipe to add them.</p>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 export default function RecipesPage() {
   const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
-  const [selectedType, setSelectedType] = useState('All');
-  const [showAiGenerate, setShowAiGenerate] = useState(false);
-  const [aiRecipes, setAiRecipes] = useState<any[]>([]);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [expandedAiRecipe, setExpandedAiRecipe] = useState<number | null>(null);
-  const [addingAiRecipe, setAddingAiRecipe] = useState(false);
-  const [suggestRecipes] = useAiSuggestRecipesMutation();
-
-  const { data: recipes, isLoading } = useGetRecipesQuery(search || undefined);
+  const { data: recipes = [], isLoading } = useGetRecipesQuery(search.trim() || undefined);
   const [deleteRecipe] = useDeleteRecipeMutation();
-  const [createRecipe] = useCreateRecipeMutation();
+  const [editing, setEditing] = useState<Recipe | null | undefined>(undefined); // undefined = closed, null = new
+  const [viewing, setViewing] = useState<Recipe | null>(null);
+  const [planTarget, setPlanTarget] = useState<PlanTarget | null>(null);
+  const [fixId, setFixId] = useState<string | null>(null);
 
-  const handleEdit = (recipe: Recipe) => {
-    setEditingRecipe(recipe);
-    setShowForm(true);
+  const remove = async (recipe: Recipe) => {
+    try { await deleteRecipe(recipe.id).unwrap(); toast.success(`${recipe.name} deleted`); }
+    catch (err) { toast.error(errorMessage(err)); }
   };
-
-  const handleDelete = async (id: string) => {
-    setDeleteError(null);
-    try {
-      await deleteRecipe(id).unwrap();
-    } catch (err: any) {
-      // Backend returns 409 if recipe is in upcoming meal plan
-      const message = err?.data?.message || err?.data?.error || 'Failed to delete recipe';
-      setDeleteError(message);
-      setTimeout(() => setDeleteError(null), 5000);
-    }
-    setConfirmDeleteId(null);
-  };
-
-  const handleAddAiRecipe = async (aiRecipe: any) => {
-    setAddingAiRecipe(true);
-    try {
-      const ingredients = (aiRecipe.ingredientsUsed || aiRecipe.ingredients || []).map((ing: any, i: number) => {
-        if (typeof ing === 'string') {
-          return { name: ing.toLowerCase(), quantity: 1, unit: 'piece', storeSection: 'produce', sortOrder: i };
-        }
-        return { name: (ing.name || ing).toLowerCase(), quantity: ing.quantity || 1, unit: ing.unit || 'piece', storeSection: ing.storeSection || 'produce', sortOrder: i };
-      });
-      await createRecipe({
-        name: aiRecipe.name,
-        description: aiRecipe.steps || aiRecipe.description || `AI-suggested recipe (${aiRecipe.cookingTime || 20} min, ${aiRecipe.calories || 350} kcal)`,
-        defaultServings: aiRecipe.servings || 2,
-        ingredients,
-      }).unwrap();
-      setExpandedAiRecipe(null);
-    } catch (err) {
-      console.error('Failed to add AI recipe:', err);
-    }
-    setAddingAiRecipe(false);
-  };
-
-  const handleFormClose = () => {
-    setShowForm(false);
-    setEditingRecipe(null);
-  };
-
-  if (showForm) {
-    return <RecipeForm recipe={editingRecipe} onClose={handleFormClose} />;
-  }
+  const plan = (r: Recipe) => setPlanTarget({ recipeId: r.id, name: r.name, defaultServings: r.defaultServings });
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Recipes</h1>
-          <p className="text-gray-500 mt-1">Discover, create and manage your recipes</p>
+    <div className="space-y-8">
+      <div>
+        <PageHeader title="Recipes" subtitle={`${recipes.length} saved`}
+          actions={<Button icon={Plus} onClick={() => setEditing(null)}>New recipe</Button>} />
+
+        <div className="relative mb-4">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search recipes by name" className="pl-9" />
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={async () => {
-              setShowAiGenerate(true);
-              setAiLoading(true);
-              try {
-                const result = await suggestRecipes();
-                if ('data' in result && result.data?.suggestions) {
-                  setAiRecipes(result.data.suggestions);
-                }
-              } catch (e) { console.error(e); }
-              setAiLoading(false);
-            }}
-            className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-200 transition-all hover:scale-[1.02]"
-          >
-            🤖 Generate Recipe
-          </button>
-          <button
-            onClick={() => setShowForm(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-200 transition-all hover:scale-[1.02]"
-          >
-            + Add Recipe
-          </button>
-        </div>
+
+        {isLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-36" />)}</div>
+        ) : recipes.length === 0 ? (
+          <Card><EmptyState icon={BookOpen} title={search ? 'No recipes match' : 'No recipes yet'}
+            text={search ? 'Try another name.' : 'Create one, or get ideas from your pantry below.'}
+            action={!search && <Button icon={Plus} onClick={() => setEditing(null)}>New recipe</Button>} /></Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {recipes.map(recipe => (
+              <Card key={recipe.id} className="group flex flex-col p-4 transition-shadow hover:shadow-md">
+                <button className="flex items-start gap-3 text-left" onClick={() => setViewing(recipe)}>
+                  <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-sm font-semibold ${tileColour(recipe.name)}`}>{initials(recipe.name)}</span>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-slate-900 group-hover:text-brand-700">{recipe.name}</h3>
+                    {recipe.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{recipe.description}</p>}
+                  </div>
+                </button>
+                <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
+                  <span className="flex items-center gap-1"><Users className="size-3.5" />{recipe.defaultServings}</span>
+                  <span>{recipe.ingredients.length} ingredients</span>
+                </div>
+                <div className="mt-auto flex items-center gap-1 pt-4">
+                  <Button size="sm" icon={CalendarPlus} onClick={() => plan(recipe)}>Plan</Button>
+                  <Button size="sm" variant="ghost" icon={Wand2} onClick={() => setFixId(recipe.id)}>Pantry check</Button>
+                  <span className="ml-auto flex items-center">
+                    <IconButton icon={Pencil} label="Edit" onClick={() => setEditing(recipe)} />
+                    <ConfirmButton icon={Trash2} onConfirm={() => remove(recipe)} />
+                  </span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Delete Error Toast */}
-      {deleteError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 flex items-center gap-3 animate-scale-in">
-          <span className="text-lg">⚠️</span>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-red-800">{deleteError}</p>
-          </div>
-          <button onClick={() => setDeleteError(null)} className="text-red-400 hover:text-red-600 text-sm">✕</button>
-        </div>
-      )}
+      <RecipeIdeas />
 
-      {/* AI Generate Section */}
-      {showAiGenerate && (
-        <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl p-6 border border-purple-100 animate-scale-in">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
-              <span className="text-2xl">🤖</span>
-            </div>
-            <div className="flex-1">
-              <h3 className="font-bold text-gray-800">Generate Recipe from Pantry</h3>
-              <p className="text-sm text-gray-600 mt-1">AI suggests recipes using your current pantry items</p>
-              {aiLoading ? (
-                <div className="mt-4 flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
-                  <span className="text-sm text-purple-600">AI is generating recipes...</span>
-                </div>
-              ) : aiRecipes.length > 0 ? (
-                <div className="mt-4 space-y-3">
-                  {aiRecipes.slice(0, 3).map((recipe: any, i: number) => (
-                    <div key={i} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
-                      <div
-                        onClick={() => setExpandedAiRecipe(expandedAiRecipe === i ? null : i)}
-                        className="p-4 cursor-pointer hover:bg-purple-50/50 transition-colors flex items-center gap-3"
-                      >
-                        <span className="text-2xl">{['🍳', '🥗', '🍲'][i % 3]}</span>
-                        <div className="flex-1">
-                          <p className="font-medium text-sm text-gray-800">{recipe.name}</p>
-                          <p className="text-xs text-gray-500">⏱ {recipe.cookingTime || 20} min • 🔥 {recipe.calories || 350} kcal • 💪 {recipe.protein || 15}g protein</p>
-                        </div>
-                        <span className="text-xs text-purple-500">{expandedAiRecipe === i ? '▲' : '▼'} details</span>
-                      </div>
-                      {expandedAiRecipe === i && (
-                        <div className="px-4 pb-4 border-t border-purple-50 pt-3 space-y-3">
-                          {recipe.ingredientsUsed && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-600 mb-1">Ingredients:</p>
-                              <div className="flex flex-wrap gap-1">
-                                {recipe.ingredientsUsed.map((ing: string, j: number) => (
-                                  <span key={j} className="text-[11px] px-2 py-0.5 bg-green-50 text-green-700 rounded-md border border-green-100">{ing}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {recipe.steps && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-600 mb-1">Steps:</p>
-                              <p className="text-xs text-gray-600 leading-relaxed">{recipe.steps}</p>
-                            </div>
-                          )}
-                          {!recipe.steps && (
-                            <p className="text-xs text-gray-400 italic">Cooking steps will be available after adding to your recipes.</p>
-                          )}
-                          <button
-                            onClick={() => handleAddAiRecipe(recipe)}
-                            disabled={addingAiRecipe}
-                            className="w-full px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-xs font-semibold rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
-                          >
-                            {addingAiRecipe ? 'Adding...' : '+ Add to My Recipes'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-gray-400">Click "Generate Recipe" to get AI suggestions based on your pantry!</p>
-              )}
-              <p className="text-xs text-purple-500 mt-3 font-medium">✨ Powered by Gemini AI • Suggestions based on your pantry</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Search & Filters */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1 relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-          <input
-            type="text"
-            placeholder="Search recipes..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-200 focus:border-green-400 outline-none text-sm shadow-sm"
-          />
-        </div>
-        <div className="flex gap-2">
-          {mealTypes.map(type => (
-            <button
-              key={type}
-              onClick={() => setSelectedType(type)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                selectedType === type
-                  ? 'bg-green-600 text-white shadow-sm'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              {type}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Recipe Grid */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center animate-pulse">
-            <span className="text-2xl">🍳</span>
-          </div>
-        </div>
-      ) : !recipes || recipes.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
-          <span className="text-5xl">📖</span>
-          <p className="text-gray-600 font-medium mt-4">No recipes yet</p>
-          <p className="text-gray-400 text-sm mt-1">Create your first recipe to get started!</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="mt-4 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 transition-colors"
-          >
-            + Create Recipe
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 stagger-children">
-          {recipes.map((recipe) => (
-            <div
-              key={recipe.id}
-              className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm card-hover group"
-            >
-              {/* Image */}
-              <div className="h-40 bg-gradient-to-br from-green-100 to-emerald-50 relative overflow-hidden">
-                <img
-                  src={defaultImage}
-                  alt={recipe.name}
-                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
-                />
-                <div className="absolute top-3 right-3 px-2 py-1 bg-white/90 backdrop-blur-sm rounded-lg text-xs font-medium text-gray-700">
-                  {recipe.defaultServings} servings
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="p-5">
-                <h3 className="font-bold text-gray-900 text-lg">{recipe.name}</h3>
-                {recipe.description && (
-                  <p className="text-gray-500 text-sm mt-1 line-clamp-2">{recipe.description}</p>
-                )}
-
-                {/* Quick stats */}
-                <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
-                  <span>🥄 {recipe.ingredients.length} ingredients</span>
-                  <span>👥 {recipe.defaultServings} servings</span>
-                </div>
-
-                {/* Ingredient preview */}
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {recipe.ingredients.slice(0, 3).map((ing, i) => (
-                    <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-lg">
-                      {ing.displayName || ing.name}
-                    </span>
-                  ))}
-                  {recipe.ingredients.length > 3 && (
-                    <span className="px-2 py-0.5 text-gray-400 text-xs">+{recipe.ingredients.length - 3} more</span>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => handleEdit(recipe)}
-                    className="flex-1 px-3 py-2 text-xs font-semibold bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors"
-                  >
-                    ✏️ Edit
-                  </button>
-                  {confirmDeleteId === recipe.id ? (
-                    <div className="flex-1 flex items-center gap-1">
-                      <span className="text-[10px] text-red-600 font-medium">Sure?</span>
-                      <button onClick={() => handleDelete(recipe.id)} className="px-2 py-1.5 text-[10px] font-bold bg-red-500 text-white rounded-lg">Yes</button>
-                      <button onClick={() => setConfirmDeleteId(null)} className="px-2 py-1.5 text-[10px] font-bold bg-gray-200 text-gray-700 rounded-lg">No</button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDeleteId(recipe.id)}
-                      className="flex-1 px-3 py-2 text-xs font-semibold bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
-                    >
-                      🗑️ Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <RecipeForm recipe={editing} onClose={() => setEditing(undefined)} />
+      <RecipeDetail recipe={viewing} onClose={() => setViewing(null)}
+        onEdit={() => { setEditing(viewing); setViewing(null); }}
+        onPlan={() => { if (viewing) plan(viewing); setViewing(null); }}
+        onFix={() => { setFixId(viewing?.id ?? null); setViewing(null); }} />
+      <PlanMealModal target={planTarget} onClose={() => setPlanTarget(null)} />
+      <RecipeFixModal recipeId={fixId} onClose={() => setFixId(null)} />
     </div>
   );
 }

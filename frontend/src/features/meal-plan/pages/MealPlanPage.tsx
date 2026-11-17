@@ -1,476 +1,153 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Copy, Minus, Package, Plus, Recycle, Repeat, Trash2, Users } from 'lucide-react';
 import {
-  useGetMealPlanQuery,
-  useGetRecipesQuery,
-  useAddMealPlanEntryMutation,
-  useUpdateMealPlanEntryMutation,
-  useDeleteMealPlanEntryMutation,
-  useGenerateGroceryListMutation,
-  MealPlanEntry,
+  useAddMealPlanEntryMutation, useDeleteMealPlanEntryMutation, useGetLeftoversQuery, useGetMealPlanQuery,
+  useUpdateMealPlanEntryMutation, type MealPlanEntry,
 } from '../../../app/api';
+import { MEAL_SLOTS } from '../../../shared/constants';
+import { addDays, datePart, formatDay, todayIso, weekStartOf } from '../../../shared/dates';
+import { Badge, Button, Card, IconButton, PageHeader, Spinner, Stat, cx } from '../../../shared/ui';
+import { errorMessage, toast } from '../../../shared/components/Toast';
+import { availableLeftovers, consumersOf, isLeftoverConsumer, isLeftoverSource } from '../leftovers';
+import { AddMealModal, LeftoverModal, SwapMealModal } from '../MealPlanModals';
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MEAL_SLOTS = ['breakfast', 'lunch', 'dinner', 'snack', 'anytime'];
-const SLOT_ICONS: Record<string, string> = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿', anytime: '🕐' };
+const slotOrder = (slot: string) => { const i = MEAL_SLOTS.indexOf(slot as typeof MEAL_SLOTS[number]); return i === -1 ? 99 : i; };
+const fail = (err: unknown) => toast.error(errorMessage(err));
 
-function getWeekStart(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().split('T')[0];
-}
+function MealCard({ entry, locked, today, allLeftovers, onSwap, onMarkLeftover }: {
+  entry: MealPlanEntry; locked: boolean; today: string; allLeftovers: MealPlanEntry[];
+  onSwap: () => void; onMarkLeftover: () => void;
+}) {
+  const [update] = useUpdateMealPlanEntryMutation();
+  const [remove] = useDeleteMealPlanEntryMutation();
+  const source = isLeftoverSource(entry);
+  const consumer = isLeftoverConsumer(entry);
+  const cooked = datePart(entry.planDate) <= today;
 
-function getCurrentSlotIndex(): number {
-  const hour = new Date().getHours();
-  if (hour < 10) return 0; // breakfast
-  if (hour < 14) return 1; // lunch
-  if (hour < 20) return 2; // dinner
-  return 3; // snack
-}
+  const setServings = (n: number) => (n < 1 ? remove(entry.id) : update({ id: entry.id, data: { servings: n } })).unwrap().catch(fail);
 
-export default function MealPlanPage() {
-  const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
-  const [showAddModal, setShowAddModal] = useState<{ date: string; slot: string } | null>(null);
-  const [showSwapModal, setShowSwapModal] = useState<{ entryId: string; date: string; slot: string; currentServings: number } | null>(null);
-  const [showLeftoverModal, setShowLeftoverModal] = useState<{ entryId: string; recipeName: string } | null>(null);
-  const [leftoverExpiry, setLeftoverExpiry] = useState('');
-  const [selectedRecipeId, setSelectedRecipeId] = useState('');
-  const [servings, setServings] = useState(2);
-  const [useLeftover, setUseLeftover] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
-
-  const { data: entries = [], isLoading } = useGetMealPlanQuery(currentWeekStart);
-  const { data: recipes = [] } = useGetRecipesQuery();
-  const [addEntry] = useAddMealPlanEntryMutation();
-  const [updateEntry] = useUpdateMealPlanEntryMutation();
-  const [deleteEntry] = useDeleteMealPlanEntryMutation();
-  const [generateList] = useGenerateGroceryListMutation();
-
-  // AUTO-REGENERATE grocery list whenever entries change
-  const prevEntriesRef = useRef(JSON.stringify(entries));
-  useEffect(() => {
-    const current = JSON.stringify(entries);
-    if (current !== prevEntriesRef.current && entries.length > 0) {
-      prevEntriesRef.current = current;
-      generateList();
-    }
-  }, [entries, generateList]);
-
-  // Get previous week for copy feature
-  const prevWeekStart = (() => { const d = new Date(currentWeekStart); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })();
-  const { data: prevEntries = [] } = useGetMealPlanQuery(prevWeekStart);
-
-  // Build dates for current week
-  const weekDates = DAYS.map((_, i) => { const d = new Date(currentWeekStart); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
-  const todayStr = new Date().toISOString().split('T')[0];
-  const currentSlotIdx = getCurrentSlotIndex();
-
-  // Check if a date+slot is in the past or current (can be marked as leftover)
-  const isPastMeal = (date: string, slot: string): boolean => {
-    if (date < todayStr) return true;
-    if (date === todayStr) {
-      const slotIdx = MEAL_SLOTS.indexOf(slot.toLowerCase());
-      return slotIdx <= currentSlotIdx;
-    }
-    return false;
-  };
-
-  // Check if date is BEFORE today (fully locked — not even today)
-  const isBeforeToday = (date: string): boolean => date < todayStr;
-
-  // LEFTOVER LOGIC:
-  // SOURCE = past meal marked as leftover (has isLeftover=true AND leftoverExpiryDate set)
-  // CONSUMER = today/future meal using leftover servings (has isLeftover=true but NO leftoverExpiryDate)
-  // Available = source servings - consumed servings. If 0, dont show.
-  const availableLeftovers = (() => {
-    // Find SOURCES: past meals with isLeftover=true AND leftoverExpiryDate (marking modal sets this)
-    const sources = entries.filter(e => {
-      if (!(e as any).isLeftover) return false;
-      if (!(e as any).leftoverExpiryDate) return false; // consumers dont have expiry
-      const entryDate = e.planDate.split('T')[0];
-      if (entryDate > todayStr) return false; // future cant be source
-      const expiry = (e as any).leftoverExpiryDate;
-      const expiryDate = typeof expiry === 'string' ? expiry.split('T')[0] : new Date(expiry).toISOString().split('T')[0];
-      if (expiryDate < todayStr) return false; // expired
-      return true;
-    });
-
-    if (sources.length === 0) return [];
-
-    // Consolidate by recipeId
-    const byRecipe: Record<string, { totalServings: number; entry: typeof sources[0]; sourceIds: string[] }> = {};
-    sources.forEach(e => {
-      if (!byRecipe[e.recipeId]) {
-        byRecipe[e.recipeId] = { totalServings: e.servings, entry: e, sourceIds: [e.id] };
-      } else {
-        byRecipe[e.recipeId].totalServings += e.servings;
-        byRecipe[e.recipeId].sourceIds.push(e.id);
-      }
-    });
-
-    // Count CONSUMERS: today/future entries with isLeftover=true and same recipeId (but not sources)
-    return Object.values(byRecipe).map(({ totalServings, entry, sourceIds }) => {
-      const consumed = entries.filter(f => {
-        if (f.recipeId !== entry.recipeId) return false;
-        if (sourceIds.includes(f.id)) return false;
-        if (!(f as any).isLeftover) return false;
-        const fDate = f.planDate.split('T')[0];
-        if (fDate < todayStr) return false; // past consumers already eaten
-        return true;
-      }).reduce((sum, f) => sum + f.servings, 0);
-      const remaining = Math.max(0, totalServings - consumed);
-      return { ...entry, remainingServings: remaining, sourceIds };
-    }).filter(e => e.remainingServings > 0);
-  })();
-
-  const getEntriesForDaySlot = (date: string, slot: string): MealPlanEntry[] => {
-    return entries.filter(e => e.planDate.split('T')[0] === date && e.mealSlot.toLowerCase() === slot.toLowerCase());
-  };
-
-  const handleAddEntry = async () => {
-    if (!showAddModal || !selectedRecipeId) return;
-    const recipe = recipes.find(r => r.id === selectedRecipeId);
-    try {
-      await addEntry({
-        recipeId: selectedRecipeId,
-        planDate: showAddModal.date,
-        mealSlot: showAddModal.slot,
-        servings: servings || recipe?.defaultServings || 2,
-        isLeftover: useLeftover,
-      } as any).unwrap();
-    } catch (e) {
-      console.error('Failed to add entry:', e);
-    }
-    setShowAddModal(null);
-    setSelectedRecipeId('');
-    setServings(2);
-    setUseLeftover(false);
-  };
-
-  const handleSwap = async () => {
-    if (!showSwapModal || !selectedRecipeId) return;
-    await deleteEntry(showSwapModal.entryId);
-    await addEntry({
-      recipeId: selectedRecipeId,
-      planDate: showSwapModal.date,
-      mealSlot: showSwapModal.slot,
-      servings: showSwapModal.currentServings,
-    } as any);
-    setShowSwapModal(null);
-    setSelectedRecipeId('');
-  };
-
-  const handleToggleLeftover = async (entry: MealPlanEntry) => {
-    const current = (entry as any).isLeftover || false;
-    await updateEntry({ id: entry.id, data: { isLeftover: !current } as any });
-  };
-
-  const handleCopyPreviousWeek = async () => {
-    for (const entry of prevEntries) {
-      const oldDate = new Date(entry.planDate.split('T')[0]);
-      const newDate = new Date(oldDate);
-      newDate.setDate(newDate.getDate() + 7);
-      await addEntry({ recipeId: entry.recipeId, planDate: newDate.toISOString().split('T')[0], mealSlot: entry.mealSlot, servings: entry.servings } as any);
-    }
-  };
-
-  const navigateWeek = (direction: number) => {
-    const date = new Date(currentWeekStart);
-    date.setDate(date.getDate() + direction * 7);
-    setCurrentWeekStart(getWeekStart(date));
+  const toggleLeftover = () => {
+    if (!source) return onMarkLeftover();
+    const consumers = consumersOf(entry, allLeftovers, today);
+    if (consumers.length) return toast.warning(`${consumers.length} upcoming meal(s) use this leftover. Remove them first.`);
+    update({ id: entry.id, data: { isLeftover: false, leftoverExpiryDate: null } }).unwrap().catch(fail);
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">📅 Meal Plan</h1>
-          <p className="text-gray-500 mt-1">Plan your meals · grocery list updates automatically</p>
+    <div className={cx('group rounded-lg border px-2.5 py-2 text-xs',
+      source ? 'border-amber-200 bg-amber-50' : consumer ? 'border-slate-200 bg-slate-50' : 'border-brand-100 bg-brand-50/60')}>
+      <div className="flex items-start justify-between gap-1">
+        <div className="min-w-0">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{entry.mealSlot}</p>
+          <p className="truncate font-medium text-slate-800" title={entry.recipe.name}>{entry.recipe.name}</p>
         </div>
-        <div className="flex items-center gap-3">
-          {prevEntries.length > 0 && (
-            <button onClick={handleCopyPreviousWeek} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all">
-              📋 Copy Previous Week
-            </button>
-          )}
-        </div>
+        {(source || consumer) && <Badge tone={source ? 'amber' : 'slate'} icon={source ? Package : Recycle}>{source ? 'leftover' : 'reused'}</Badge>}
       </div>
-
-      {/* Week Navigation */}
-      {notification && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center justify-between animate-scale-in">
-          <p className="text-sm text-red-700 font-medium">{notification}</p>
-          <button onClick={() => setNotification(null)} className="text-red-400 hover:text-red-600 text-sm font-bold ml-3">x</button>
-        </div>
-      )}
-      <div className="flex items-center justify-center gap-4">
-        <button onClick={() => navigateWeek(-1)} className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 transition-all">← Prev</button>
-        <div className="px-5 py-2 bg-green-50 border border-green-200 rounded-xl">
-          <span className="text-sm font-semibold text-green-800">
-            {new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {new Date(weekDates[6]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+      <div className="mt-1.5 flex items-center justify-between">
+        {locked ? <span className="text-slate-500">{entry.servings} servings</span> : (
+          <span className="flex items-center gap-1">
+            <button aria-label="Fewer servings" onClick={() => setServings(entry.servings - 1)} className="flex size-5 items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-100"><Minus className="size-3" /></button>
+            <span className="w-5 text-center text-slate-700">{entry.servings}</span>
+            <button aria-label="More servings" onClick={() => setServings(entry.servings + 1)} className="flex size-5 items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-100"><Plus className="size-3" /></button>
           </span>
-        </div>
-        <button onClick={() => navigateWeek(1)} className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 transition-all">Next →</button>
+        )}
+        <span className="flex items-center opacity-70 group-hover:opacity-100">
+          {cooked && !consumer && <IconButton icon={Package} label={source ? 'Unmark leftover' : 'Save as leftover'} onClick={toggleLeftover} className={cx('size-6', source && 'text-amber-600')} />}
+          {!locked && <IconButton icon={Repeat} label="Swap recipe" onClick={onSwap} className="size-6" />}
+          {!locked && <IconButton icon={Trash2} label="Remove" onClick={() => remove(entry.id).unwrap().catch(fail)} className="size-6 hover:text-red-600" />}
+        </span>
       </div>
+    </div>
+  );
+}
 
-      {/* Week Grid */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center animate-pulse"><span className="text-2xl">📅</span></div>
+export default function MealPlanPage() {
+  const today = todayIso();
+  const [weekStart, setWeekStart] = useState(weekStartOf(today));
+  const { data: entries = [], isLoading } = useGetMealPlanQuery(weekStart);
+  const { data: prevEntries = [] } = useGetMealPlanQuery(addDays(weekStart, -7));
+  const { data: leftoverEntries = [] } = useGetLeftoversQuery();
+  const [addMeal, { isLoading: copying }] = useAddMealPlanEntryMutation();
+  const [addDate, setAddDate] = useState<string | null>(null);
+  const [swapEntry, setSwapEntry] = useState<MealPlanEntry | null>(null);
+  const [leftoverEntry, setLeftoverEntry] = useState<MealPlanEntry | null>(null);
+
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const leftovers = availableLeftovers(leftoverEntries, today);
+  const mealsOn = (day: string) => entries.filter(e => datePart(e.planDate) === day).sort((a, b) => slotOrder(a.mealSlot) - slotOrder(b.mealSlot));
+
+  const copyLastWeek = async () => {
+    try {
+      await Promise.all(prevEntries.filter(e => !e.isLeftover).map(e =>
+        addMeal({ recipeId: e.recipeId, planDate: addDays(datePart(e.planDate), 7), mealSlot: e.mealSlot, servings: e.servings }).unwrap()));
+      toast.success('Copied last week');
+    } catch (err) { fail(err); }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Meal plan" subtitle="Your grocery list updates as you plan"
+        actions={<>
+          {entries.length === 0 && prevEntries.some(e => !e.isLeftover) && <Button size="sm" variant="secondary" icon={Copy} loading={copying} onClick={copyLastWeek}>Copy last week</Button>}
+          <div className="flex items-center gap-1">
+            <IconButton icon={ChevronLeft} label="Previous week" onClick={() => setWeekStart(addDays(weekStart, -7))} />
+            <button onClick={() => setWeekStart(weekStartOf(today))} className="rounded-lg px-2 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100">
+              {formatDay(weekStart, { day: 'numeric', month: 'short' })} – {formatDay(addDays(weekStart, 6), { day: 'numeric', month: 'short' })}
+            </button>
+            <IconButton icon={ChevronRight} label="Next week" onClick={() => setWeekStart(addDays(weekStart, 7))} />
+          </div>
+        </>} />
+
+      {leftovers.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          <Package className="size-4" /> Leftovers ready to use:
+          {leftovers.map(l => <span key={l.recipeId} className="font-medium">{l.recipeName} ({l.remaining})</span>)}
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <div className="grid grid-cols-7 gap-3 min-w-[1000px]">
-            {weekDates.map((date, dayIdx) => {
-              const isToday = date === todayStr;
-              return (
-                <div key={date} className={`rounded-2xl overflow-hidden border transition-all ${isToday ? 'border-green-400 shadow-md shadow-green-100 bg-white' : isBeforeToday(date) ? 'border-gray-100 bg-white shadow-sm opacity-60' : 'border-gray-100 bg-white shadow-sm'}`}>
-                  <div className={`text-center py-2.5 ${isToday ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white' : isBeforeToday(date) ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
-                    <p className="text-xs font-bold uppercase tracking-wide">{DAYS_SHORT[dayIdx]}</p>
-                    <p className={`text-lg font-bold`}>{new Date(date).getDate()}</p>
-                    {isToday && <span className="text-[9px] font-bold text-green-100">TODAY</span>}
-                  </div>
-                  <div className="p-2 space-y-1.5">
-                    {MEAL_SLOTS.map(slot => {
-                      const slotEntries = getEntriesForDaySlot(date, slot);
-                      const canBeLeftover = isPastMeal(date, slot);
-                      return (
-                        <div key={slot} className="min-h-[50px]">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-semibold text-gray-400 uppercase flex items-center gap-1">
-                              <span>{SLOT_ICONS[slot]}</span> {slot}
-                            </span>
-                          </div>
-                          {slotEntries.length === 0 ? (
-                            <div onClick={() => setShowAddModal({ date, slot })} className="h-8 border border-dashed border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-300 hover:bg-green-50/30 transition-all">
-                              <span className="text-[10px] text-gray-300">+ add</span>
-                            </div>
-                          ) : (
-                            <>
-                            {slotEntries.map(entry => {
-                              // Determine card style:
-                              // Yellow = leftover SOURCE (has expiryDate, its the meal you marked)
-                              // Grey = leftover CONSUMER (using leftover servings, no expiryDate)
-                              // Green = normal meal
-                              const isLeftoverSource = (entry as any).isLeftover && (entry as any).leftoverExpiryDate;
-                              const isLeftoverConsumed = (entry as any).isLeftover && !(entry as any).leftoverExpiryDate;
-                              let cardStyle = 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200';
-                              if (isLeftoverSource) {
-                                cardStyle = 'bg-amber-50 border border-amber-200';
-                              } else if (isLeftoverConsumed) {
-                                cardStyle = 'bg-gray-100 border border-gray-300';
-                              }
-                              return (
-                              <div key={entry.id} className={`rounded-lg p-1.5 mb-1 group ${cardStyle}`}>
-                                <p className="text-[11px] font-semibold text-gray-800 truncate">
-                                  {isLeftoverSource && <span className="text-amber-500 mr-0.5">🍱</span>}
-                                  {isLeftoverConsumed && <span className="text-gray-400 mr-0.5">♻️</span>}
-                                  {entry.recipe?.name}
-                                </p>
-                                <div className="flex items-center justify-between mt-0.5">
-                                  {!isBeforeToday(date) && (
-                                    <div className="flex items-center gap-0.5">
-                                      <button onClick={() => { if (entry.servings <= 1) { deleteEntry(entry.id); } else { updateEntry({ id: entry.id, data: { servings: entry.servings - 1 } }); } }} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">-</button>
-                                      <span className="text-[10px] text-gray-600 px-0.5">{entry.servings}</span>
-                                      <button onClick={() => updateEntry({ id: entry.id, data: { servings: entry.servings + 1 } })} className="w-4 h-4 bg-white border border-gray-200 rounded text-[9px] flex items-center justify-center hover:bg-gray-100">+</button>
-                                    </div>
-                                  )}
-                                  {isBeforeToday(date) && (
-                                    <span className="text-[9px] text-gray-400">{entry.servings} srv</span>
-                                  )}
-                                  <div className="flex items-center gap-1">
-                                    {canBeLeftover && (
-                                      <button onClick={async () => {
-                                        if ((entry as any).isLeftover) {
-                                          // Check if this leftover is being consumed by future meals
-                                          const consumers = entries.filter(
-                                            f => f.recipeId === entry.recipeId
-                                              && f.id !== entry.id
-                                              && (f as any).isLeftover === true
-                                              && !(f as any).leftoverExpiryDate
-                                              && f.planDate.split('T')[0] >= todayStr
-                                          );
-                                          if (consumers.length > 0) {
-                                            setNotification(`Cannot unmark: ${consumers.length} future meal(s) are using this leftover. Remove them first.`);
-                                            setTimeout(() => setNotification(null), 5000);
-                                            return;
-                                          }
-                                          try {
-                                            await updateEntry({ id: entry.id, data: { isLeftover: false, leftoverExpiryDate: null } as any }).unwrap();
-                                          } catch (err) {
-                                            console.error('Failed to unmark leftover:', err);
-                                          }
-                                        } else {
-                                          setShowLeftoverModal({ entryId: entry.id, recipeName: entry.recipe?.name || 'Meal' });
-                                        }
-                                      }} className={`text-[9px] px-1 rounded ${(entry as any).isLeftover ? 'text-amber-600 font-bold' : 'text-gray-400 hover:text-amber-500'}`} title={`${(entry as any).isLeftover ? 'Unmark' : 'Mark as'} leftover`}>
-                                        🍱
-                                      </button>
-                                    )}
-                                    {!isBeforeToday(date) && (
-                                      <button onClick={() => setShowSwapModal({ entryId: entry.id, date, slot, currentServings: entry.servings })} className="text-[10px] text-blue-500 hover:text-blue-700 px-0.5" title="Swap">🔄</button>
-                                    )}
-                                    {!isBeforeToday(date) && (
-                                      <button onClick={() => deleteEntry(entry.id)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5">✕</button>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                            })}
-                            {!isBeforeToday(date) && (
-                              <div onClick={() => setShowAddModal({ date, slot })} className="h-6 border border-dashed border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-300 hover:bg-green-50/30 transition-all mt-1">
-                                <span className="text-[9px] text-gray-300">+ add</span>
-                              </div>
-                            )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+      )}
+
+      {isLoading ? <Spinner /> : (
+        <div className="grid gap-3 lg:grid-cols-7">
+          {days.map(day => {
+            const isToday = day === today;
+            const locked = day < today;
+            const meals = mealsOn(day);
+            return (
+              <Card key={day} className={cx('flex flex-col p-2.5', isToday && 'ring-2 ring-brand-400', locked && 'opacity-60')}>
+                <div className="mb-2 flex items-baseline justify-between px-0.5 lg:block">
+                  <p className={cx('text-xs font-semibold uppercase', isToday ? 'text-brand-700' : 'text-slate-500')}>{formatDay(day, { weekday: 'short' })}</p>
+                  <p className={cx('text-lg font-semibold', isToday ? 'text-brand-700' : 'text-slate-900')}>{formatDay(day, { day: 'numeric' })}
+                    {isToday && <span className="ml-1.5 text-[10px] font-medium uppercase text-brand-600">today</span>}</p>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Week Summary */}
-      {entries.length > 0 && (
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-          <div className="grid grid-cols-4 gap-4">
-            <div className="text-center"><p className="text-2xl font-bold text-green-600">{entries.length}</p><p className="text-xs text-gray-500">Total Meals</p></div>
-            <div className="text-center"><p className="text-2xl font-bold text-blue-600">{entries.reduce((a, e) => a + e.servings, 0)}</p><p className="text-xs text-gray-500">Servings</p></div>
-            <div className="text-center"><p className="text-2xl font-bold text-amber-600">{entries.filter(e => (e as any).isLeftover).length}</p><p className="text-xs text-gray-500">Leftovers</p></div>
-            <div className="text-center"><p className="text-2xl font-bold text-purple-600">{new Set(entries.map(e => e.recipeId)).size}</p><p className="text-xs text-gray-500">Unique Recipes</p></div>
-          </div>
-          {availableLeftovers.length > 0 && (
-            <p className="text-[10px] text-amber-600 text-center mt-3 font-medium">Tip: You have leftover servings available. Use them when adding new meals to save on groceries.</p>
-          )}
-        </div>
-      )}
-
-      {/* Add Entry Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowAddModal(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-gray-900 mb-1">Add to {showAddModal.slot}</h2>
-            <p className="text-sm text-gray-500 mb-4">{new Date(showAddModal.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
-
-            {/* Available Leftovers */}
-            {availableLeftovers.length > 0 && (
-              <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-200">
-                <p className="text-xs font-semibold text-amber-700 mb-2">🍱 Available Leftovers:</p>
-                <div className="flex flex-wrap gap-2">
-                  {availableLeftovers.map(e => (
-                    <button key={e.id} type="button"
-                      onClick={() => { setSelectedRecipeId(e.recipeId); setServings(e.remainingServings); setUseLeftover(true); }}
-                      className="px-3 py-1.5 bg-white text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 border border-amber-200 transition-colors">
-                      🍱 {e.recipe?.name} ({e.remainingServings}sv left)
-                    </button>
+                <div className="flex-1 space-y-1.5">
+                  {meals.map(e => (
+                    <MealCard key={e.id} entry={e} locked={locked} today={today} allLeftovers={leftoverEntries}
+                      onSwap={() => setSwapEntry(e)} onMarkLeftover={() => setLeftoverEntry(e)} />
                   ))}
                 </div>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Recipe</label>
-                <select value={selectedRecipeId}
-                  onChange={(e) => { setSelectedRecipeId(e.target.value); const r = recipes.find(x => x.id === e.target.value); if (r) setServings(r.defaultServings); setUseLeftover(false); }}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm">
-                  <option value="">Choose a recipe...</option>
-                  {recipes.map(r => <option key={r.id} value={r.id}>{r.name} ({r.defaultServings} servings)</option>)}
-                </select>
-              </div>
-              <div className="flex gap-4 items-end">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Servings</label>
-                  <input type="number" value={servings} onChange={(e) => {
-                    const val = Number(e.target.value);
-                    if (useLeftover) {
-                      const leftover = availableLeftovers.find(l => l.recipeId === selectedRecipeId);
-                      const max = leftover?.remainingServings || val;
-                      setServings(Math.min(val, max));
-                    } else {
-                      setServings(val);
-                    }
-                  }} min={1} max={useLeftover ? (availableLeftovers.find(l => l.recipeId === selectedRecipeId)?.remainingServings || 99) : undefined} className="w-24 px-4 py-3 border border-gray-200 rounded-xl text-sm" />
-                  {useLeftover && selectedRecipeId && (
-                    <p className="text-[10px] text-amber-600 mt-1">Max: {availableLeftovers.find(l => l.recipeId === selectedRecipeId)?.remainingServings || 0} servings available</p>
-                  )}
-                </div>
-                <label className={`flex items-center gap-2 px-4 py-3 rounded-xl cursor-pointer transition-colors ${useLeftover ? 'bg-amber-100 border-amber-300 border' : 'bg-gray-50 border border-gray-200 hover:bg-amber-50'}`}>
-                  <input type="checkbox" checked={useLeftover} onChange={(e) => setUseLeftover(e.target.checked)} className="rounded border-amber-300 text-amber-600" />
-                  <span className="text-sm font-medium text-amber-700">🍱 Leftover</span>
-                </label>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={handleAddEntry} disabled={!selectedRecipeId}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-xl hover:shadow-lg disabled:opacity-50 transition-all text-sm">
-                  Add to Plan
-                </button>
-                <button onClick={() => setShowAddModal(null)} className="px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 text-sm">Cancel</button>
-              </div>
-            </div>
-          </div>
+                {!locked && (
+                  <button onClick={() => setAddDate(day)}
+                    className="mt-2 flex h-8 items-center justify-center gap-1 rounded-lg border border-dashed border-slate-200 text-xs text-slate-400 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700">
+                    <Plus className="size-3.5" />Add
+                  </button>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {/* Leftover Modal */}
-      {showLeftoverModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowLeftoverModal(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">🍱 Mark as Leftover</h2>
-            <p className="text-sm text-gray-500 mb-4">"{showLeftoverModal.recipeName}" will be available as a leftover for future meals.</p>
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Expiry Date (leftover stays available until)</label>
-              <input
-                type="date"
-                value={leftoverExpiry}
-                onChange={(e) => setLeftoverExpiry(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none"
-              />
-              <p className="text-xs text-gray-400 mt-1">Default: tomorrow. After this date, leftover won't be shown as available.</p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={async () => {
-                  const expiry = leftoverExpiry || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-                  await updateEntry({ id: showLeftoverModal.entryId, data: { isLeftover: true, leftoverExpiryDate: expiry } as any });
-                  setShowLeftoverModal(null);
-                  setLeftoverExpiry('');
-                }}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl hover:shadow-lg transition-all text-sm"
-              >
-                🍱 Mark as Leftover
-              </button>
-              <button onClick={() => setShowLeftoverModal(null)} className="px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl text-sm">Cancel</button>
-            </div>
-          </div>
+      {entries.length > 0 && (
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat label="Meals" value={entries.length} icon={CalendarDays} tone="green" />
+          <Stat label="Servings" value={entries.reduce((n, e) => n + e.servings, 0)} icon={Users} tone="blue" />
+          <Stat label="Leftover meals" value={entries.filter(e => e.isLeftover).length} icon={Package} tone="amber" />
+          <Stat label="Different recipes" value={new Set(entries.map(e => e.recipeId)).size} icon={BookOpen} tone="violet" />
         </div>
       )}
 
-      {/* Swap Modal */}
-      {showSwapModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowSwapModal(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-gray-900 mb-4">🔄 Swap Recipe</h2>
-            <select value={selectedRecipeId} onChange={(e) => setSelectedRecipeId(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm mb-4">
-              <option value="">Choose replacement...</option>
-              {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-            <div className="flex gap-3">
-              <button onClick={handleSwap} disabled={!selectedRecipeId} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl disabled:opacity-50 text-sm">Swap</button>
-              <button onClick={() => setShowSwapModal(null)} className="px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl text-sm">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddMealModal date={addDate} leftovers={leftovers} onClose={() => setAddDate(null)} />
+      <SwapMealModal entry={swapEntry} onClose={() => setSwapEntry(null)} />
+      <LeftoverModal entry={leftoverEntry} onClose={() => setLeftoverEntry(null)} />
     </div>
   );
 }

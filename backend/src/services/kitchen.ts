@@ -233,7 +233,7 @@ export async function whatsForDinner(): Promise<Sourced<DinnerPick>> {
       `Facts: have ${pick.have.join(', ') || 'nothing'}; missing ${pick.missing.join(', ') || 'nothing'}; ` +
       `expiring soon: ${pick.expiring.map(e => e.name).join(', ') || 'none'}. Do not invent other facts.`)
       .then(r => r?.pitch ?? null),
-    () => `${pick.name}: ${pick.reason.charAt(0).toLowerCase()}${pick.reason.slice(1)}.`,
+    () => `${pick.reason}.`,
   );
   return { data: { pick, pitch: result.data, alternatives: alternatives.slice(0, 2) }, source: result.source };
 }

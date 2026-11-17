@@ -1,247 +1,124 @@
-import { useEffect, useState } from 'react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Area, AreaChart,
-} from 'recharts';
-import { useAiEstimateNutritionMutation } from '../../../app/api';
+import { useState } from 'react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Flame, Refrigerator, ShoppingCart, Utensils } from 'lucide-react';
+import { useGetAnalyticsQuery, useGetNutritionQuery } from '../../../app/api';
+import { sectionOf } from '../../../shared/constants';
+import { addDays, formatDay, weekStartOf } from '../../../shared/dates';
+import { Card, CardHeader, EmptyState, IconButton, PageHeader, SourceBadge, Spinner, Stat } from '../../../shared/ui';
 
-interface AnalyticsData {
-  overview: { totalRecipes: number; totalPantryItems: number; totalMealsPlanned: number; groceryListItems: number };
-  mealsPerDay: { day: string; meals: number }[];
-  topIngredients: { name: string; count: number }[];
-  groceryStats: { total: number; checked: number; unchecked: number; adHoc: number };
-  sectionBreakdown: { name: string; value: number }[];
-  slotBreakdown: { name: string; value: number }[];
+const BRAND = '#059669';
+const axis = { fontSize: 11, fill: '#64748b' };
+const tooltipStyle = { borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.06)', fontSize: 12 };
+
+/** Horizontal bar list: one hue, sorted by size, label + value in text colours. */
+function BarList({ rows }: { rows: { label: string; value: number }[] }) {
+  const max = Math.max(1, ...rows.map(r => r.value));
+  return (
+    <ul className="space-y-2.5 p-5">
+      {rows.map(r => (
+        <li key={r.label} className="text-sm">
+          <div className="mb-1 flex justify-between"><span className="capitalize text-slate-700">{r.label}</span><span className="font-medium text-slate-900">{r.value}</span></div>
+          <div className="h-2 rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(r.value / max) * 100}%` }} /></div>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
-export default function DashboardPage() {
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showNutrition, setShowNutrition] = useState(false);
-  const [estimatingNutrition, setEstimatingNutrition] = useState(false);
-  const [nutritionData, setNutritionData] = useState<any[] | null>(null);
-  const [estimateNutrition] = useAiEstimateNutritionMutation();
-
-  useEffect(() => {
-    fetch('/api/analytics/summary')
-      .then(res => res.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  const handleEstimateNutrition = async () => {
-    setEstimatingNutrition(true);
-    setShowNutrition(true);
-    try {
-      const result = await estimateNutrition({ recipeName: 'weekly-plan' }).unwrap();
-      if (result?.nutrition) {
-        // If API returns structured daily data
-        if (Array.isArray(result.nutrition)) {
-          setNutritionData(result.nutrition);
-        } else {
-          // Single estimate — create weekly mock variation from it
-          const base = result.nutrition;
-          const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-          setNutritionData(days.map((day, i) => ({
-            day,
-            calories: Math.round((base.calories || 1900) * (0.85 + Math.random() * 0.3)),
-            protein: Math.round((base.protein || 90) * (0.85 + Math.random() * 0.3)),
-            carbs: Math.round((base.carbs || 220) * (0.85 + Math.random() * 0.3)),
-            fats: Math.round((base.fats || 65) * (0.85 + Math.random() * 0.3)),
-          })));
-        }
-      }
-    } catch (e) {
-      // Fallback: show estimated data based on typical meal plan
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      setNutritionData(days.map(day => ({
-        day,
-        calories: Math.round(1700 + Math.random() * 500),
-        protein: Math.round(75 + Math.random() * 40),
-        carbs: Math.round(180 + Math.random() * 70),
-        fats: Math.round(50 + Math.random() * 30),
-      })));
-    }
-    setEstimatingNutrition(false);
-  };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center animate-pulse">
-          <span className="text-2xl">📊</span>
-        </div>
-        <p className="mt-4 text-gray-400 text-sm">Loading analytics...</p>
-      </div>
-    );
-  }
-
-  const avgCalories = nutritionData ? Math.round(nutritionData.reduce((a, b) => a + b.calories, 0) / 7) : 0;
-  const avgProtein = nutritionData ? Math.round(nutritionData.reduce((a, b) => a + b.protein, 0) / 7) : 0;
-  const avgCarbs = nutritionData ? Math.round(nutritionData.reduce((a, b) => a + b.carbs, 0) / 7) : 0;
-  const avgFats = nutritionData ? Math.round(nutritionData.reduce((a, b) => a + b.fats, 0) / 7) : 0;
+function Nutrition({ weekStart }: { weekStart: string }) {
+  const { data, isFetching } = useGetNutritionQuery(weekStart);
+  const days = data?.data ?? [];
+  const planned = days.filter(d => d.meals > 0);
+  const avg = (key: 'calories' | 'protein' | 'carbs' | 'fats') => planned.length ? Math.round(planned.reduce((s, d) => s + d[key], 0) / planned.length) : 0;
+  const lowCoverage = data?.source === 'fallback' && planned.some(d => d.coverage < 0.8);
 
   return (
-    <div className="animate-fade-in space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">📊 Analytics Dashboard</h1>
-          <p className="text-gray-500 mt-1">Track your nutrition, costs, and meal patterns</p>
-        </div>
-        <button
-          onClick={handleEstimateNutrition}
-          disabled={estimatingNutrition}
-          className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-200 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {estimatingNutrition ? (
-            <span className="flex items-center gap-2">
-              <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
-              Estimating...
-            </span>
-          ) : '🧠 Estimate Nutrition'}
-        </button>
-      </div>
-
-      {/* Nutrition Section — only shows after button click */}
-      {showNutrition && (
-        <div className="animate-scale-in space-y-6">
-          {estimatingNutrition ? (
-            <div className="flex flex-col items-center justify-center py-12 bg-white rounded-2xl border border-gray-100">
-              <div className="animate-spin rounded-full h-10 w-10 border-3 border-purple-300 border-t-purple-600"></div>
-              <p className="mt-4 text-gray-500 text-sm">AI is estimating nutrition for your meal plan...</p>
-            </div>
-          ) : nutritionData && (
-            <>
-              {/* Nutrition Summary Cards */}
-              <div className="grid grid-cols-4 gap-4 stagger-children">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border border-green-100 card-hover">
-                  <p className="text-xs text-green-600 font-semibold uppercase tracking-wide">Avg. Calories</p>
-                  <p className="text-3xl font-bold text-green-700 mt-1">{avgCalories}</p>
-                  <p className="text-xs text-green-500 mt-1">kcal / day</p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100 card-hover">
-                  <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Avg. Protein</p>
-                  <p className="text-3xl font-bold text-blue-700 mt-1">{avgProtein}g</p>
-                  <p className="text-xs text-blue-500 mt-1">per day</p>
-                </div>
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-5 border border-amber-100 card-hover">
-                  <p className="text-xs text-amber-600 font-semibold uppercase tracking-wide">Avg. Carbs</p>
-                  <p className="text-3xl font-bold text-amber-700 mt-1">{avgCarbs}g</p>
-                  <p className="text-xs text-amber-500 mt-1">per day</p>
-                </div>
-                <div className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl p-5 border border-rose-100 card-hover">
-                  <p className="text-xs text-rose-600 font-semibold uppercase tracking-wide">Avg. Fats</p>
-                  <p className="text-3xl font-bold text-rose-700 mt-1">{avgFats}g</p>
-                  <p className="text-xs text-rose-500 mt-1">per day</p>
-                </div>
+    <Card className="lg:col-span-2">
+      <CardHeader icon={Flame} title="Nutrition per person" subtitle="One serving of each planned meal, per day" action={<SourceBadge source={data?.source} />} />
+      {isFetching && !data ? <Spinner /> : planned.length === 0 ? <EmptyState icon={Flame} title="No meals planned this week" /> : (
+        <div className="p-5">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {([['calories', 'kcal / day'], ['protein', 'g protein'], ['carbs', 'g carbs'], ['fats', 'g fat']] as const).map(([key, label]) => (
+              <div key={key} className="rounded-lg bg-slate-50 px-3 py-2">
+                <p className="text-lg font-semibold text-slate-900">{avg(key)}</p>
+                <p className="text-xs text-slate-500">avg {label}</p>
               </div>
-
-              {/* Charts Row */}
-              <div className="grid grid-cols-2 gap-6">
-                {/* Calorie Trend */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-                  <h3 className="font-bold text-gray-800 text-sm mb-4">🔥 Daily Calories (This Week)</h3>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={nutritionData}>
-                      <defs>
-                        <linearGradient id="calorieGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                          <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
-                      <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
-                      <Area type="monotone" dataKey="calories" stroke="#10b981" strokeWidth={2.5} fill="url(#calorieGrad)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Protein Trend */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-                  <h3 className="font-bold text-gray-800 text-sm mb-4">💪 Daily Protein (This Week)</h3>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={nutritionData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
-                      <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
-                      <Bar dataKey="protein" fill="url(#proteinGrad)" radius={[6, 6, 0, 0]} />
-                      <defs>
-                        <linearGradient id="proteinGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#3b82f6" />
-                          <stop offset="100%" stopColor="#6366f1" />
-                        </linearGradient>
-                      </defs>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-              <p className="text-xs text-purple-500 font-medium text-center">✨ Estimated by Gemini AI based on your current meal plan</p>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Analytics Charts (always visible) */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* Meals per day */}
-        {data && (
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <h3 className="font-bold text-gray-800 text-sm mb-4">📅 Meals Per Day</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={data.mealsPerDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
-                <Bar dataKey="meals" fill="#10b981" radius={[6, 6, 0, 0]} />
+            ))}
+          </div>
+          <div className="h-56">
+            <ResponsiveContainer>
+              <BarChart data={days} margin={{ left: -16, right: 4 }}>
+                <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="day" tick={axis} axisLine={false} tickLine={false} />
+                <YAxis tick={axis} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#f8fafc' }} formatter={v => [`${v} kcal`, 'Calories']} />
+                <Bar dataKey="calories" fill={BRAND} radius={[4, 4, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        )}
+          {lowCoverage && <p className="mt-2 text-xs text-slate-500">Some ingredients are not in the built-in nutrition table, so totals are a lower bound. Add a Gemini key for full estimates.</p>}
+        </div>
+      )}
+    </Card>
+  );
+}
 
-        {/* Grocery by section */}
-        {data && data.sectionBreakdown.length > 0 && (
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <h3 className="font-bold text-gray-800 text-sm mb-4">🛍️ Grocery by Section</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={data.sectionBreakdown} cx="50%" cy="50%" innerRadius={35} outerRadius={65} dataKey="value" nameKey="name" paddingAngle={3}>
-                  {data.sectionBreakdown.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+export default function DashboardPage() {
+  const [weekStart, setWeekStart] = useState(weekStartOf());
+  const { data, isLoading } = useGetAnalyticsQuery(weekStart);
 
-        {/* Top Ingredients */}
-        {data && data.topIngredients.length > 0 && (
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <h3 className="font-bold text-gray-800 text-sm mb-4">🥬 Top Ingredients</h3>
-            <div className="space-y-2.5">
-              {data.topIngredients.slice(0, 5).map((ing, i) => (
-                <div key={ing.name} className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-gray-400 w-4">{i + 1}</span>
-                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{
-                      width: `${(ing.count / (data.topIngredients[0]?.count || 1)) * 100}%`,
-                      background: COLORS[i % COLORS.length]
-                    }} />
-                  </div>
-                  <span className="text-xs font-medium text-gray-700 w-20 text-right">{ing.name}</span>
-                  <span className="text-xs text-gray-400">{ing.count}x</span>
-                </div>
-              ))}
-            </div>
+  return (
+    <div>
+      <PageHeader title="Insights" subtitle="How your week looks"
+        actions={<div className="flex items-center gap-1">
+          <IconButton icon={ChevronLeft} label="Previous week" onClick={() => setWeekStart(addDays(weekStart, -7))} />
+          <button onClick={() => setWeekStart(weekStartOf())} className="rounded-lg px-2 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100">
+            {formatDay(weekStart, { day: 'numeric', month: 'short' })} – {formatDay(addDays(weekStart, 6), { day: 'numeric', month: 'short' })}
+          </button>
+          <IconButton icon={ChevronRight} label="Next week" onClick={() => setWeekStart(addDays(weekStart, 7))} />
+        </div>} />
+
+      {isLoading || !data ? <Spinner /> : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Stat label="Meals this week" value={data.overview.totalMealsPlanned} icon={CalendarDays} tone="green" />
+            <Stat label="Recipes" value={data.overview.totalRecipes} icon={BookOpen} tone="violet" />
+            <Stat label="Pantry items" value={data.overview.totalPantryItems} icon={Refrigerator} tone="blue" />
+            <Stat label="On grocery list" value={data.overview.groceryListItems} icon={ShoppingCart} tone="amber" />
           </div>
-        )}
-      </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Nutrition weekStart={weekStart} />
+            <Card>
+              <CardHeader icon={CalendarDays} title="Meals per day" />
+              <div className="h-64 p-4">
+                <ResponsiveContainer>
+                  <BarChart data={data.mealsPerDay} margin={{ left: -24, right: 4 }}>
+                    <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="day" tick={axis} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={axis} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#f8fafc' }} formatter={v => [v, 'Meals']} />
+                    <Bar dataKey="meals" fill={BRAND} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader icon={ShoppingCart} title="Grocery list by aisle" />
+              {data.sectionBreakdown.length === 0 ? <EmptyState icon={ShoppingCart} title="Grocery list is empty" />
+                : <BarList rows={[...data.sectionBreakdown].sort((a, b) => b.value - a.value).map(s => ({ label: sectionOf(s.name).label, value: s.value }))} />}
+            </Card>
+            <Card>
+              <CardHeader icon={Utensils} title="Most used ingredients" subtitle="Across this week's meals" />
+              {data.topIngredients.length === 0 ? <EmptyState icon={Utensils} title="No meals planned" />
+                : <BarList rows={data.topIngredients.map(i => ({ label: i.name, value: i.count }))} />}
+            </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

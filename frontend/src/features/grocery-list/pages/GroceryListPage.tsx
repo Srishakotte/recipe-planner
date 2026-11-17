@@ -1,391 +1,226 @@
 import { useState } from 'react';
+import { AlertTriangle, Check, Download, Home, IndianRupee, ListChecks, Package, Plus, Repeat, RotateCcw, Search, ShoppingBasket, ShoppingCart, Trash2 } from 'lucide-react';
 import {
-  useGetGroceryListQuery,
-  useGenerateGroceryListMutation,
-  useCheckGroceryItemMutation,
-  useOverrideGroceryItemMutation,
-  useMarkAlreadyHaveMutation,
-  useAddAdHocItemMutation,
-  useDeleteGroceryItemMutation,
-  useAiEstimateCostMutation,
-  GroceryItem,
+  useAddAdHocItemMutation, useCheckGroceryItemMutation, useDeleteGroceryItemMutation, useEstimateCostMutation,
+  useGetGroceryListQuery, useMarkAlreadyHaveMutation, useOverrideGroceryItemMutation, type GroceryItem,
 } from '../../../app/api';
+import { STORE_SECTIONS, UNITS, sectionOf } from '../../../shared/constants';
+import { Badge, Button, Card, EmptyState, IconButton, Input, PageHeader, Select, SourceBadge, Spinner, Stat, Tabs, cx } from '../../../shared/ui';
+import { errorMessage, toast } from '../../../shared/components/Toast';
 
-const tabs = ['All', 'Need To Buy', 'In Pantry', 'Purchased'];
+type Tab = 'all' | 'buy' | 'pantry' | 'done';
 
-// amount the user will actually buy: their edit if any, else what the plan needs
+/** What the user will actually buy: their edited amount if any, else what the plan needs. */
 const qtyOf = (i: GroceryItem) => i.overrideQty ?? i.computedQty;
+const isPlanNotice = (type: string) => type === 'override_reset' || type === 'quantity_increased';
 
-function substitutedFrom(item: GroceryItem): string[] {
-  const names = (item.sourceRecipes || []).map(s => s.substitutedFrom).filter((n): n is string => !!n);
-  return [...new Set(names)];
-}
+const matchesTab: Record<Tab, (i: GroceryItem) => boolean> = {
+  all: () => true,
+  buy: i => !i.isChecked && !i.isAlreadyHave && qtyOf(i) > 0,
+  pantry: i => i.isAlreadyHave || qtyOf(i) === 0,
+  done: i => i.isChecked,
+};
 
 function sourceSummary(item: GroceryItem): string {
   const counts = new Map<string, number>();
-  for (const s of item.sourceRecipes || []) {
-    const name = typeof s === 'string' ? s : s.recipeName;
-    counts.set(name, (counts.get(name) || 0) + 1);
-  }
+  for (const s of item.sourceRecipes ?? []) counts.set(s.recipeName, (counts.get(s.recipeName) ?? 0) + 1);
   return [...counts].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(', ');
 }
 
-export default function GroceryListPage() {
-  const [activeTab, setActiveTab] = useState('All');
-  const [search, setSearch] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [adHocName, setAdHocName] = useState('');
-  const [adHocQty, setAdHocQty] = useState(1);
-  const [adHocUnit, setAdHocUnit] = useState('piece');
-  const [overrideId, setOverrideId] = useState<string | null>(null);
-  const [overrideValue, setOverrideValue] = useState(0);
-  const [showAiPanel, setShowAiPanel] = useState(false);
-  const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
-  const [costLoading, setCostLoading] = useState(false);
+function GroceryRow({ item }: { item: GroceryItem }) {
+  const [check] = useCheckGroceryItemMutation();
+  const [override] = useOverrideGroceryItemMutation();
+  const [haveIt] = useMarkAlreadyHaveMutation();
+  const [remove] = useDeleteGroceryItemMutation();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(qtyOf(item));
 
-  const { data: groceryList, isLoading } = useGetGroceryListQuery(undefined, { refetchOnMountOrArgChange: true });
-  const [generateList, { isLoading: isGenerating }] = useGenerateGroceryListMutation();
-  const [checkItem] = useCheckGroceryItemMutation();
-  const [overrideItem] = useOverrideGroceryItemMutation();
-  const [markAlreadyHave] = useMarkAlreadyHaveMutation();
-  const [addAdHocItem] = useAddAdHocItemMutation();
-  const [deleteItem] = useDeleteGroceryItemMutation();
-  const [estimateCost] = useAiEstimateCostMutation();
+  const covered = item.computedQty === 0 && item.overrideQty == null;
+  const done = item.isChecked || covered;
+  const substitutedFrom = [...new Set((item.sourceRecipes ?? []).map(s => s.substitutedFrom).filter(Boolean))];
+  const warnings = (item.warnings ?? []).filter(w => !isPlanNotice(w.type));
 
-  // GET /grocery regenerates on the server whenever the plan, pantry, recipes or
-  // substitution rules changed, so the list here is always current (the query refetches
-  // on mount in case the cached copy is from before a change made on another page).
+  const act = (p: Promise<unknown>) => p.catch(err => toast.error(errorMessage(err)));
+  const saveQty = () => { act(override({ id: item.id, overrideQty: value }).unwrap()); setEditing(false); };
 
-  const items = groceryList?.items || [];
+  return (
+    <li className={cx('flex items-start gap-3 px-4 py-3 sm:px-5', covered && 'bg-brand-50/40')}>
+      <button
+        onClick={() => !covered && act(check({ id: item.id, isChecked: !item.isChecked }).unwrap())}
+        disabled={covered} aria-label={item.isChecked ? 'Uncheck' : 'Check off'}
+        className={cx('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+          done ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 hover:border-brand-500')}>
+        {done && <Check className="size-3.5" />}
+      </button>
 
-  // one-time notices produced when the meal plan changed under the user's edits
-  const planChangeNotices = items.flatMap(i => (i.warnings || [])
-    .filter(w => w.type === 'override_reset' || w.type === 'quantity_increased')
-    .map(w => ({ item: i, warning: w })));
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={cx('text-sm font-medium capitalize', done ? 'text-slate-400 line-through' : 'text-slate-800')}>{item.ingredientName}</span>
+          {covered && <Badge tone="green">in pantry</Badge>}
+          {item.isAdHoc && <Badge tone="blue">added by you</Badge>}
+          {item.overrideQty != null && <Badge tone="violet" title={`Plan needs ${item.computedQty} ${item.unit}`}>edited</Badge>}
+          {item.isAlreadyHave && !covered && <Badge tone="green">have it</Badge>}
+        </div>
+        {substitutedFrom.length > 0 && <p className="mt-0.5 flex items-center gap-1 text-xs text-violet-600"><Repeat className="size-3" />instead of {substitutedFrom.join(', ')}</p>}
+        {item.sourceRecipes && item.sourceRecipes.length > 0 && <p className="mt-0.5 text-xs text-slate-400">For {sourceSummary(item)}</p>}
+        {warnings.map((w, i) => <p key={i} className="mt-0.5 flex items-start gap-1 text-xs text-red-600"><AlertTriangle className="mt-0.5 size-3 shrink-0" />{w.message}</p>)}
+      </div>
 
-  const handleResetOverride = async (item: GroceryItem) => {
-    await overrideItem({ id: item.id, overrideQty: null });
-  };
+      {editing ? (
+        <form onSubmit={e => { e.preventDefault(); saveQty(); }} className="flex items-center gap-1">
+          <Input type="number" step="0.25" min={0} value={value} onChange={e => setValue(Number(e.target.value))} className="h-8 w-20 text-xs" autoFocus />
+          <IconButton icon={Check} label="Save" type="submit" className="text-brand-600" />
+        </form>
+      ) : (
+        <div className="flex items-center gap-1">
+          {item.overrideQty != null && <span className="text-xs text-slate-400 line-through">{item.computedQty}</span>}
+          <button onClick={() => { setValue(qtyOf(item)); setEditing(true); }} title="Change amount"
+            className={cx('rounded-md px-2 py-1 text-sm font-medium hover:bg-slate-100', item.overrideQty != null ? 'text-violet-700' : 'text-slate-700')}>
+            {qtyOf(item)} {item.unit}
+          </button>
+          {item.overrideQty != null && <IconButton icon={RotateCcw} label={`Reset to ${item.computedQty} ${item.unit}`} onClick={() => act(override({ id: item.id, overrideQty: null }).unwrap())} />}
+        </div>
+      )}
 
-  // Filter by tab
-  const filteredItems = items.filter(item => {
-    if (search && !item.ingredientName.toLowerCase().includes(search.toLowerCase())) return false;
-    switch (activeTab) {
-      case 'Need To Buy': return !item.isChecked && !item.isAlreadyHave && qtyOf(item) > 0;
-      case 'In Pantry': return item.isAlreadyHave || qtyOf(item) === 0;
-      case 'Purchased': return item.isChecked;
-      default: return true;
-    }
-  });
+      <div className="flex items-center">
+        {!item.isAlreadyHave && !covered && (
+          <IconButton icon={Home} label="I have this (add to pantry)"
+            onClick={() => act(haveIt({ id: item.id, addToPantry: true }).unwrap().then(() => toast.success(`${item.ingredientName} added to pantry`)))} />
+        )}
+        <IconButton icon={Trash2} label="Remove" className="hover:text-red-600" onClick={() => act(remove(item.id).unwrap())} />
+      </div>
+    </li>
+  );
+}
 
-  // Stats
-  const needToBuy = items.filter(i => !i.isChecked && !i.isAlreadyHave && qtyOf(i) > 0);
-  const inPantry = items.filter(i => i.isAlreadyHave || qtyOf(i) === 0);
-  const purchased = items.filter(i => i.isChecked);
+function AddItemForm({ onDone }: { onDone: () => void }) {
+  const [add, { isLoading }] = useAddAdHocItemMutation();
+  const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [unit, setUnit] = useState('piece');
+  const [section, setSection] = useState('other');
 
-  // Group by section
-  const groupedItems: Record<string, GroceryItem[]> = {};
-  filteredItems.forEach(item => {
-    const section = item.storeSection || 'other';
-    if (!groupedItems[section]) groupedItems[section] = [];
-    groupedItems[section].push(item);
-  });
-
-  const handleCheck = async (item: GroceryItem) => {
-    await checkItem({ id: item.id, isChecked: !item.isChecked });
-  };
-
-  const handleOverride = async (id: string) => {
-    await overrideItem({ id, overrideQty: overrideValue });
-    setOverrideId(null);
-  };
-
-  const handleAddAdHoc = async () => {
-    if (!adHocName) return;
-    await addAdHocItem({ ingredientName: adHocName, computedQty: adHocQty, unit: adHocUnit, storeSection: 'other' });
-    setAdHocName(''); setAdHocQty(1); setShowAddForm(false);
-  };
-
-  const handleExportCSV = () => {
-    const buyItems = items.filter(i => qtyOf(i) > 0 && !i.isAlreadyHave && !i.isChecked);
-    const csv = ['Item,Quantity,Unit,Section']
-      .concat(buyItems.map(i => `"${i.ingredientName}",${i.overrideQty ?? i.computedQty},"${i.unit}","${i.storeSection}"`))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'grocery-list.csv'; a.click();
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await add({ name, quantity, unit, storeSection: section }).unwrap();
+      toast.success(`${name} added`);
+      onDone();
+    } catch (err) { toast.error(errorMessage(err)); }
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">🛒 Grocery List</h1>
-          <p className="text-gray-500 mt-1">Auto-generated from your meal plan and pantry</p>
+    <Card className="animate-fade-in p-4">
+      <form onSubmit={submit} className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_90px_110px_150px_auto]">
+        <Input className="col-span-2 sm:col-span-1" value={name} onChange={e => setName(e.target.value)} placeholder="Item, e.g. paper towels" required autoFocus />
+        <Input type="number" min={0.25} step="0.25" value={quantity} onChange={e => setQuantity(Number(e.target.value))} />
+        <Select value={unit} onChange={e => setUnit(e.target.value)}>{UNITS.map(u => <option key={u}>{u}</option>)}</Select>
+        <Select value={section} onChange={e => setSection(e.target.value)} className="col-span-2 sm:col-span-1">
+          {Object.entries(STORE_SECTIONS).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}
+        </Select>
+        <div className="col-span-2 flex gap-2 sm:col-span-1">
+          <Button type="submit" loading={isLoading}>Add</Button>
+          <Button type="button" variant="ghost" onClick={onDone}>Cancel</Button>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={handleExportCSV} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all">
-            📄 Export CSV
-          </button>
-          <button
-            onClick={async () => { await generateList(); }}
-            disabled={isGenerating}
-            className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-200 transition-all hover:scale-[1.02] disabled:opacity-50"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
+      </form>
+    </Card>
+  );
+}
 
-      {/* Smart Summary Cards */}
-      <div className="grid grid-cols-4 gap-4 stagger-children">
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center mb-2"><span className="text-sm">📋</span></div>
-          <p className="text-2xl font-bold text-gray-900">{items.length}</p>
-          <p className="text-xs text-gray-500">Total Items</p>
-        </div>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center mb-2"><span className="text-sm">✅</span></div>
-          <p className="text-2xl font-bold text-green-600">{inPantry.length}</p>
-          <p className="text-xs text-gray-500">Already Have</p>
-        </div>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover">
-          <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center mb-2"><span className="text-sm">🛍️</span></div>
-          <p className="text-2xl font-bold text-amber-600">{needToBuy.length}</p>
-          <p className="text-xs text-gray-500">Need To Buy</p>
-        </div>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm card-hover cursor-pointer" onClick={async () => {
-          if (estimatedCost !== null) return;
-          setCostLoading(true);
-          try {
-            const result = await estimateCost().unwrap();
-            setEstimatedCost(result.totalCost);
-          } catch (e) {
-            setEstimatedCost(needToBuy.length * 60);
-          }
-          setCostLoading(false);
-        }}>
-          <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center mb-2"><span className="text-sm">💰</span></div>
-          {costLoading ? (
-            <>
-              <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">Estimating...</p>
-            </>
-          ) : estimatedCost !== null ? (
-            <>
-              <p className="text-2xl font-bold text-purple-600">₹{estimatedCost}</p>
-              <p className="text-xs text-gray-500">Est. Cost (AI)</p>
-            </>
-          ) : (
-            <>
-              <p className="text-lg font-bold text-purple-600">Click</p>
-              <p className="text-xs text-gray-500">Estimate Cost (AI)</p>
-            </>
-          )}
-        </div>
-      </div>
+export default function GroceryListPage() {
+  const { data, isLoading } = useGetGroceryListQuery(undefined, { refetchOnMountOrArgChange: true });
+  const [estimate, { data: cost, isLoading: costing }] = useEstimateCostMutation();
+  const [tab, setTab] = useState<Tab>('buy');
+  const [search, setSearch] = useState('');
+  const [adding, setAdding] = useState(false);
 
+  const items = data?.items ?? [];
+  const count = (t: Tab) => items.filter(matchesTab[t]).length;
+  const visible = items.filter(i => matchesTab[tab](i) && i.ingredientName.includes(search.toLowerCase()));
+  const sections = Object.keys(STORE_SECTIONS).map(key => ({ key, items: visible.filter(i => (STORE_SECTIONS[i.storeSection] ? i.storeSection : 'other') === key) })).filter(s => s.items.length);
+  const notices = items.flatMap(i => (i.warnings ?? []).filter(w => isPlanNotice(w.type)).map(w => ({ item: i, w })));
+  const progress = items.length ? Math.round((count('done') / items.length) * 100) : 0;
 
-      {/* Tabs + Search */}
-      <div className="flex items-center gap-4">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-          {tabs.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab} ({tab === 'All' ? items.length : tab === 'Need To Buy' ? needToBuy.length : tab === 'In Pantry' ? inPantry.length : purchased.length})
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-          <input
-            type="text"
-            placeholder="Search items..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 outline-none"
-          />
-        </div>
-        <button onClick={() => setShowAddForm(!showAddForm)} className="px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50">
-          + Add Item
-        </button>
-      </div>
+  const exportCsv = () => {
+    const rows = items.filter(matchesTab.buy).map(i => `"${i.ingredientName}",${qtyOf(i)},"${i.unit}","${sectionOf(i.storeSection).label}"`);
+    const url = URL.createObjectURL(new Blob([['Item,Quantity,Unit,Section', ...rows].join('\n')], { type: 'text/csv' }));
+    Object.assign(document.createElement('a'), { href: url, download: 'grocery-list.csv' }).click();
+    URL.revokeObjectURL(url);
+  };
 
-      {/* Add Form */}
-      {showAddForm && (
-        <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm animate-scale-in flex gap-3 items-end">
-          <div className="flex-1">
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Item Name</label>
-            <input type="text" value={adHocName} onChange={(e) => setAdHocName(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="e.g. Paper towels" />
-          </div>
-          <div className="w-20">
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Qty</label>
-            <input type="number" value={adHocQty} onChange={(e) => setAdHocQty(Number(e.target.value))}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
-          </div>
-          <div className="w-24">
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Unit</label>
-            <select value={adHocUnit} onChange={(e) => setAdHocUnit(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
-              <option value="piece">piece</option>
-              <option value="g">g</option>
-              <option value="kg">kg</option>
-              <option value="ml">ml</option>
-              <option value="l">l</option>
-              <option value="cup">cup</option>
-              <option value="tbsp">tbsp</option>
-              <option value="tsp">tsp</option>
-              <option value="oz">oz</option>
-              <option value="lb">lb</option>
-              <option value="can">can</option>
-              <option value="bunch">bunch</option>
-              <option value="packet">packet</option>
-            </select>
-          </div>
-          <button onClick={handleAddAdHoc} className="px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl">Add</button>
-          <button onClick={() => setShowAddForm(false)} className="px-4 py-2.5 bg-gray-100 text-gray-600 text-sm font-semibold rounded-xl">Cancel</button>
-        </div>
-      )}
+  return (
+    <div>
+      <PageHeader title="Groceries" subtitle="Built from your meal plan, minus what's in your pantry"
+        actions={<>
+          <Button size="sm" variant="secondary" icon={Download} onClick={exportCsv} disabled={!count('buy')}>Export CSV</Button>
+          <Button size="sm" icon={Plus} onClick={() => setAdding(a => !a)}>Add item</Button>
+        </>} />
 
-      {/* Plan-change notices: edits that were reset because the meal plan changed */}
-      {planChangeNotices.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-amber-800">🔁 Your meal plan changed. {planChangeNotices.length} edited item{planChangeNotices.length > 1 ? 's were' : ' was'} updated</p>
-          <ul className="mt-2 space-y-1">
-            {planChangeNotices.map(({ item, warning }, i) => (
-              <li key={item.id + i} className="text-xs text-amber-700">
-                <span className="font-semibold">{item.ingredientName}:</span> {warning.message}
-              </li>
-            ))}
-          </ul>
-          <p className="text-[11px] text-amber-600 mt-2">Edit the quantity or tick the item again to dismiss.</p>
-        </div>
-      )}
-
-      {/* Shopping Progress Bar */}
-      {items.length > 0 && (
-        <div className="bg-white rounded-2xl p-4 border border-gray-100">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-gray-600">Shopping Progress</span>
-            <span className="text-xs text-gray-500">{purchased.length}/{items.length} items</span>
-          </div>
-          <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-500"
-              style={{ width: `${items.length > 0 ? (purchased.length / items.length) * 100 : 0}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Grocery Items by Section */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center animate-pulse">
-            <span className="text-2xl">🛒</span>
-          </div>
-        </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
-          <span className="text-5xl">🛒</span>
-          <p className="text-gray-600 font-medium mt-4">
-            {items.length === 0 ? 'No grocery list yet' : 'No items match your filter'}
-          </p>
-          <p className="text-gray-400 text-sm mt-1">
-            {items.length === 0 ? 'Add meals to your plan and generate a list!' : 'Try a different tab or search term'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4 stagger-children">
-          {Object.entries(groupedItems).map(([section, sectionItems]) => (
-            <div key={section} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-              <div className="px-5 py-3 bg-gray-50/80 border-b border-gray-100 flex items-center gap-2">
-                <span className="text-sm">
-                  {section === 'produce' ? '🥬' : section === 'dairy' ? '🥛' : section === 'meat' ? '🥩' : section === 'pantry' ? '🏠' : section === 'bakery' ? '🍞' : section === 'frozen' ? '🧊' : '📦'}
-                </span>
-                <h3 className="font-semibold text-gray-700 capitalize text-sm">
-                  {section === 'produce' ? 'Fresh Produce' : section === 'dairy' ? 'Dairy & Eggs' : section === 'meat' ? 'Meat & Seafood' : section === 'pantry' ? 'Pantry Staples' : section === 'bakery' ? 'Bakery' : section === 'frozen' ? 'Frozen Foods' : 'Other Items'}
-                </h3>
-                <span className="text-xs text-gray-400 ml-auto">{sectionItems.length} items</span>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {sectionItems.map(item => (
-                  <div key={item.id} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${item.isChecked ? 'opacity-50' : ''} ${item.computedQty === 0 ? 'bg-green-50/40' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={item.isChecked || item.computedQty === 0}
-                      onChange={() => item.computedQty > 0 && handleCheck(item)}
-                      className="w-4.5 h-4.5 rounded-md border-gray-300 text-green-600 focus:ring-green-200"
-                    />
-                    <div className="flex-1">
-                      <span className={`font-medium text-sm ${item.isChecked || item.computedQty === 0 ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                        {item.ingredientName}
-                      </span>
-                      {item.computedQty === 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">✅ in pantry</span>}
-                      {item.isAdHoc && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md font-medium">custom</span>}
-                      {item.isAlreadyHave && item.computedQty > 0 && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-md font-medium">have it</span>}
-                      {item.overrideQty != null && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-md font-medium" title={`Plan needs ${item.computedQty} ${item.unit}`}>edited</span>}
-                      {/* Substitution: which original ingredient(s) this replaces */}
-                      {substitutedFrom(item).length > 0 && (
-                        <p className="text-xs text-violet-600 mt-0.5">🔄 instead of {substitutedFrom(item).join(', ')}</p>
-                      )}
-                      {/* Source recipes (deduplicated: "Bolognese ×2") */}
-                      {item.sourceRecipes && item.sourceRecipes.length > 0 && (
-                        <p className="text-xs text-gray-400 mt-0.5">From: {sourceSummary(item)}</p>
-                      )}
-                      {/* Engine warnings (constraint conflicts, unit problems) */}
-                      {(item.warnings || []).filter(w => w.type !== 'override_reset' && w.type !== 'quantity_increased').map((w, i) => (
-                        <p key={i} className="text-xs text-red-600 mt-0.5">⚠️ {w.message}</p>
-                      ))}
-                    </div>
-                    {/* Quantity */}
-                    {overrideId === item.id ? (
-                      <div className="flex items-center gap-1">
-                        <input type="number" step="0.25" value={overrideValue} onChange={(e) => setOverrideValue(Number(e.target.value))}
-                          className="w-16 px-2 py-1 border rounded-lg text-xs" autoFocus />
-                        <button onClick={() => handleOverride(item.id)} className="text-green-600 text-xs font-bold">✓</button>
-                        <button onClick={() => setOverrideId(null)} className="text-gray-400 text-xs">✕</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        {item.overrideQty != null && (
-                          <span className="text-xs text-gray-400 line-through" title="Amount the meal plan needs">{item.computedQty}</span>
-                        )}
-                        <button
-                          onClick={() => { setOverrideId(item.id); setOverrideValue(item.overrideQty ?? item.computedQty); }}
-                          className={`text-sm font-medium px-2 py-1 rounded-lg hover:bg-green-50 transition-colors ${item.overrideQty != null ? 'text-purple-700' : 'text-gray-600 hover:text-green-600'}`}
-                          title="Click to change the amount"
-                        >
-                          {item.overrideQty ?? item.computedQty} {item.unit}
-                        </button>
-                        {item.overrideQty != null && (
-                          <button onClick={() => handleResetOverride(item)} className="text-xs text-gray-400 hover:text-purple-700" title={`Reset to ${item.computedQty} ${item.unit}`}>↺</button>
-                        )}
-                      </div>
-                    )}
-                    {/* Actions */}
-                    <div className="flex items-center gap-1">
-                      {!item.isAlreadyHave && (
-                        <button onClick={() => markAlreadyHave({ id: item.id, isAlreadyHave: true })}
-                          className="text-xs text-gray-400 hover:text-green-600 px-1.5 py-1 rounded hover:bg-green-50" title="Have it">🏠</button>
-                      )}
-                      <button onClick={() => deleteItem(item.id)}
-                        className="text-xs text-gray-400 hover:text-red-600 px-1.5 py-1 rounded hover:bg-red-50" title="Remove">🗑️</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="To buy" value={count('buy')} icon={ShoppingCart} tone="amber" />
+        <Stat label="Covered by pantry" value={count('pantry')} icon={Package} tone="green" />
+        <Stat label="Checked off" value={count('done')} icon={ListChecks} tone="blue" />
+        <Card className="flex items-center justify-between gap-2 p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><IndianRupee className="size-4" /></span>
+            <div>
+              <p className="text-xl font-semibold leading-tight text-slate-900">{cost ? (cost.data.total === null ? '—' : `₹${Math.round(cost.data.total)}`) : '—'}</p>
+              <p className="text-xs text-slate-500">{cost?.data.total === null ? 'Needs a Gemini key' : 'Estimated cost'}</p>
             </div>
-          ))}
+          </div>
+          {cost ? <SourceBadge source={cost.source} /> : <Button size="sm" variant="ghost" loading={costing} onClick={() => estimate()} disabled={!count('buy')}>Estimate</Button>}
+        </Card>
+      </div>
+
+      {adding && <div className="mb-4"><AddItemForm onDone={() => setAdding(false)} /></div>}
+
+      {notices.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">Your meal plan changed, so {notices.length} edited item{notices.length > 1 ? 's were' : ' was'} updated</p>
+          <ul className="mt-1.5 space-y-0.5">{notices.map(({ item, w }, i) => <li key={i} className="text-xs text-amber-800"><b className="capitalize">{item.ingredientName}:</b> {w.message}</li>)}</ul>
+          <p className="mt-2 text-[11px] text-amber-700">Edit the amount or tick the item again to dismiss.</p>
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Tabs value={tab} onChange={setTab} options={[
+          { value: 'buy', label: `To buy (${count('buy')})` },
+          { value: 'all', label: `All (${items.length})` },
+          { value: 'pantry', label: `In pantry (${count('pantry')})` },
+          { value: 'done', label: `Done (${count('done')})` },
+        ]} />
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search items" className="pl-9" />
+        </div>
+      </div>
+
+      {items.length > 0 && (
+        <div className="mb-4 flex items-center gap-3">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${progress}%` }} /></div>
+          <span className="text-xs font-medium text-slate-500">{progress}% done</span>
+        </div>
+      )}
+
+      {isLoading ? <Spinner label="Building your list…" /> : sections.length === 0 ? (
+        <Card><EmptyState icon={ShoppingBasket}
+          title={items.length === 0 ? 'Your list is empty' : 'Nothing here'}
+          text={items.length === 0 ? 'Plan some meals and the list fills itself.' : 'Try another tab or search.'} /></Card>
+      ) : (
+        <div className="space-y-3">
+          {sections.map(({ key, items: sectionItems }) => {
+            const { label, icon: Icon } = sectionOf(key);
+            return (
+              <Card key={key} className="overflow-hidden">
+                <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 sm:px-5">
+                  <Icon className="size-4 text-slate-500" />
+                  <h2 className="text-sm font-semibold text-slate-700">{label}</h2>
+                  <span className="ml-auto text-xs text-slate-400">{sectionItems.length}</span>
+                </div>
+                <ul className="divide-y divide-slate-100">{sectionItems.map(item => <GroceryRow key={item.id} item={item} />)}</ul>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

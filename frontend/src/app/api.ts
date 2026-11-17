@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
-// Types
+// ---------------------------------------------------------------- core types
+
 export interface Ingredient {
   id: string;
   name: string;
@@ -15,10 +16,19 @@ export interface Recipe {
   id: string;
   name: string;
   defaultServings: number;
-  description?: string;
+  description?: string | null;
+  steps?: string | null;
   ingredients: Ingredient[];
   createdAt: string;
 }
+
+export type RecipeInput = {
+  name: string;
+  description?: string;
+  steps?: string;
+  defaultServings: number;
+  ingredients: Omit<Ingredient, 'id' | 'sortOrder'>[];
+};
 
 export interface MealPlanEntry {
   id: string;
@@ -26,15 +36,26 @@ export interface MealPlanEntry {
   planDate: string;
   mealSlot: string;
   servings: number;
+  isLeftover: boolean;
+  leftoverExpiryDate?: string | null;
   recipe: Recipe;
 }
+
+export type MealPlanInput = {
+  recipeId?: string;
+  planDate?: string;
+  mealSlot?: string;
+  servings?: number;
+  isLeftover?: boolean;
+  leftoverExpiryDate?: string | null;
+};
 
 export interface PantryItem {
   id: string;
   name: string;
   quantity: number;
   unit: string;
-  expirationDate?: string;
+  expirationDate?: string | null;
 }
 
 export interface GrocerySource {
@@ -69,7 +90,6 @@ export interface GroceryListResponse {
   generationId: string;
   version: number;
   items: GroceryItem[];
-  warnings?: GroceryWarning[];
   generatedAt: string;
 }
 
@@ -78,7 +98,7 @@ export interface Substitution {
   originalIngredient: string;
   substituteIngredient: string;
   quantityRatio: number;
-  substituteUnit?: string;
+  substituteUnit?: string | null;
   constraintType: string;
   constraintValue: string;
 }
@@ -90,49 +110,111 @@ export interface UserConstraint {
   isActive: boolean;
 }
 
+export interface Synonym { id: string; synonym: string; canonicalName: string }
+
+export interface AnalyticsSummary {
+  weekStart: string;
+  overview: { totalRecipes: number; totalPantryItems: number; totalMealsPlanned: number; groceryListItems: number };
+  mealsPerDay: { day: string; meals: number }[];
+  topIngredients: { name: string; count: number }[];
+  groceryStats: { total: number; checked: number; unchecked: number; adHoc: number };
+  sectionBreakdown: { name: string; value: number }[];
+  slotBreakdown: { name: string; value: number }[];
+}
+
+// ---------------------------------------------------------------- AI / kitchen types
+
+/** Every smart feature answers with data + where it came from (Gemini or built-in logic). */
+export interface Sourced<T> { data: T; source: 'ai' | 'fallback' }
+
+export interface RecipeMatch {
+  recipeId: string;
+  name: string;
+  description: string | null;
+  defaultServings: number;
+  have: string[];
+  missing: string[];
+  expiring: { name: string; daysLeft: number }[];
+  conflicts: { ingredient: string; constraint: string }[];
+  coverage: number;
+  recentlyPlanned: boolean;
+  relevance: number;
+  score: number;
+  reason: string;
+}
+
+export interface DinnerPick { pick: RecipeMatch | null; pitch: string; alternatives: RecipeMatch[] }
+export interface FixOption { name: string; ratio: number; note: string; inPantry: boolean; fromRule: boolean }
+export interface IngredientFix { ingredient: string; options: FixOption[] }
+export interface RecipeFix { recipe: RecipeMatch; fixes: IngredientFix[] }
+
+export interface RecipeIdea {
+  name: string;
+  description: string;
+  servings: number;
+  cookingTime: number;
+  ingredients: { name: string; quantity: number; unit: string; storeSection: string }[];
+  steps: string[];
+  existingRecipeId?: string;
+}
+
+export interface DayNutrition { date: string; day: string; meals: number; coverage: number; calories: number; protein: number; carbs: number; fats: number }
+export interface CostEstimate { total: number | null; items: { item: string; cost: number }[] }
+
+export type ProposedAction =
+  | { type: 'add_meal'; recipeId: string; recipeName: string; planDate: string; mealSlot: string; servings: number }
+  | { type: 'remove_meal'; mealId: string; recipeName: string; planDate: string; mealSlot: string };
+
+export interface ChatMessage { role: 'user' | 'model'; text: string }
+
+// ---------------------------------------------------------------- API
+
+/** Anything that changes what you can cook invalidates 'Kitchen' (recommendations, dinner, fixes). */
+const KITCHEN_INPUTS = ['GroceryList', 'Kitchen'] as const;
+
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({ baseUrl: '/api' }),
-  tagTypes: ['Recipes', 'MealPlan', 'Pantry', 'GroceryList', 'Substitutions', 'Constraints'],
+  tagTypes: ['Recipes', 'MealPlan', 'Pantry', 'GroceryList', 'Substitutions', 'Constraints', 'Kitchen', 'Analytics'],
   endpoints: (builder) => ({
     // Recipes
     getRecipes: builder.query<Recipe[], string | void>({
       query: (search) => search ? `/recipes?search=${encodeURIComponent(search)}` : '/recipes',
       providesTags: ['Recipes'],
     }),
-    getRecipe: builder.query<Recipe, string>({
-      query: (id) => `/recipes/${id}`,
-      providesTags: (_result, _error, id) => [{ type: 'Recipes', id }],
-    }),
-    createRecipe: builder.mutation<Recipe, { name: string; description?: string; defaultServings: number; ingredients: Omit<Ingredient, 'id'>[] }>({
+    createRecipe: builder.mutation<Recipe, RecipeInput>({
       query: (body) => ({ url: '/recipes', method: 'POST', body }),
-      invalidatesTags: ['Recipes', 'MealPlan', 'GroceryList'],
+      invalidatesTags: ['Recipes', ...KITCHEN_INPUTS],
     }),
-    updateRecipe: builder.mutation<Recipe, { id: string; data: { name: string; description?: string; defaultServings: number; ingredients: Omit<Ingredient, 'id'>[] } }>({
+    updateRecipe: builder.mutation<Recipe, { id: string; data: RecipeInput }>({
       query: ({ id, data }) => ({ url: `/recipes/${id}`, method: 'PUT', body: data }),
-      invalidatesTags: ['Recipes', 'MealPlan', 'GroceryList'],
+      invalidatesTags: ['Recipes', 'MealPlan', ...KITCHEN_INPUTS],
     }),
     deleteRecipe: builder.mutation<void, string>({
       query: (id) => ({ url: `/recipes/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Recipes', 'MealPlan', 'GroceryList'],
+      invalidatesTags: ['Recipes', 'MealPlan', ...KITCHEN_INPUTS],
     }),
 
-    // Meal Plans
+    // Meal plan
     getMealPlan: builder.query<MealPlanEntry[], string | void>({
       query: (weekStart) => weekStart ? `/meal-plans?weekStart=${weekStart}` : '/meal-plans',
       providesTags: ['MealPlan'],
     }),
-    addMealPlanEntry: builder.mutation<MealPlanEntry, Partial<MealPlanEntry>>({
-      query: (body) => ({ url: '/meal-plans', method: 'POST', body }),
-      invalidatesTags: ['MealPlan', 'GroceryList'],
+    getLeftovers: builder.query<MealPlanEntry[], void>({
+      query: () => '/meal-plans/leftovers',
+      providesTags: ['MealPlan'],
     }),
-    updateMealPlanEntry: builder.mutation<MealPlanEntry, { id: string; data: Partial<MealPlanEntry> }>({
+    addMealPlanEntry: builder.mutation<MealPlanEntry, MealPlanInput>({
+      query: (body) => ({ url: '/meal-plans', method: 'POST', body }),
+      invalidatesTags: ['MealPlan', 'Analytics', ...KITCHEN_INPUTS],
+    }),
+    updateMealPlanEntry: builder.mutation<MealPlanEntry, { id: string; data: MealPlanInput }>({
       query: ({ id, data }) => ({ url: `/meal-plans/${id}`, method: 'PUT', body: data }),
-      invalidatesTags: ['MealPlan', 'GroceryList'],
+      invalidatesTags: ['MealPlan', 'Analytics', ...KITCHEN_INPUTS],
     }),
     deleteMealPlanEntry: builder.mutation<void, string>({
       query: (id) => ({ url: `/meal-plans/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['MealPlan', 'GroceryList'],
+      invalidatesTags: ['MealPlan', 'Analytics', ...KITCHEN_INPUTS],
     }),
 
     // Pantry
@@ -142,52 +224,44 @@ export const api = createApi({
     }),
     addPantryItem: builder.mutation<PantryItem, Partial<PantryItem>>({
       query: (body) => ({ url: '/pantry', method: 'POST', body }),
-      invalidatesTags: ['Pantry', 'GroceryList'],
+      invalidatesTags: ['Pantry', ...KITCHEN_INPUTS],
     }),
     updatePantryItem: builder.mutation<PantryItem, { id: string; data: Partial<PantryItem> }>({
       query: ({ id, data }) => ({ url: `/pantry/${id}`, method: 'PUT', body: data }),
-      invalidatesTags: ['Pantry', 'GroceryList'],
+      invalidatesTags: ['Pantry', ...KITCHEN_INPUTS],
     }),
     deletePantryItem: builder.mutation<void, string>({
       query: (id) => ({ url: `/pantry/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Pantry', 'GroceryList'],
+      invalidatesTags: ['Pantry', ...KITCHEN_INPUTS],
     }),
 
-    // Grocery List
-    generateGroceryList: builder.mutation<GroceryListResponse, void>({
-      query: () => ({ url: '/grocery/generate', method: 'POST', body: { fromToday: true } }),
-      invalidatesTags: ['GroceryList'],
-    }),
-    getGroceryList: builder.query<GroceryListResponse, { section?: string; uncheckedOnly?: boolean; warningsOnly?: boolean } | void>({
-      query: (filters) => {
-        if (!filters) return '/grocery';
-        const params = new URLSearchParams();
-        if (filters.section) params.append('section', filters.section);
-        if (filters.uncheckedOnly) params.append('uncheckedOnly', 'true');
-        if (filters.warningsOnly) params.append('warningsOnly', 'true');
-        const qs = params.toString();
-        return qs ? `/grocery?${qs}` : '/grocery';
-      },
+    // Grocery list (GET regenerates on the server when inputs changed)
+    getGroceryList: builder.query<GroceryListResponse, void>({
+      query: () => '/grocery',
       providesTags: ['GroceryList'],
     }),
     checkGroceryItem: builder.mutation<GroceryItem, { id: string; isChecked: boolean }>({
       query: ({ id, isChecked }) => ({ url: `/grocery/items/${id}/check`, method: 'PATCH', body: { isChecked } }),
+      // optimistic: tick instantly, roll back if the server says no
+      async onQueryStarted({ id, isChecked }, { dispatch, queryFulfilled }) {
+        const patch = dispatch(api.util.updateQueryData('getGroceryList', undefined, draft => {
+          const item = draft.items.find(i => i.id === id);
+          if (item) item.isChecked = isChecked;
+        }));
+        try { await queryFulfilled; } catch { patch.undo(); }
+      },
       invalidatesTags: ['GroceryList'],
     }),
     overrideGroceryItem: builder.mutation<GroceryItem, { id: string; overrideQty: number | null }>({
       query: ({ id, overrideQty }) => ({ url: `/grocery/items/${id}/override`, method: 'PATCH', body: { overrideQty } }),
       invalidatesTags: ['GroceryList'],
     }),
-    markAlreadyHave: builder.mutation<GroceryItem, { id: string; isAlreadyHave: boolean }>({
-      query: ({ id, isAlreadyHave }) => ({ url: `/grocery/items/${id}/already-have`, method: 'PATCH', body: { isAlreadyHave } }),
-      invalidatesTags: ['GroceryList'],
+    markAlreadyHave: builder.mutation<GroceryItem, { id: string; addToPantry?: boolean }>({
+      query: ({ id, addToPantry }) => ({ url: `/grocery/items/${id}/already-have`, method: 'PATCH', body: { addToPantry } }),
+      invalidatesTags: ['GroceryList', 'Pantry', 'Kitchen'],
     }),
-    addAdHocItem: builder.mutation<GroceryItem, { ingredientName: string; computedQty: number; unit: string; storeSection: string }>({
-      query: ({ ingredientName, computedQty, unit, storeSection }) => ({ 
-        url: '/grocery/items/ad-hoc', 
-        method: 'POST', 
-        body: { name: ingredientName, quantity: computedQty, unit, storeSection } 
-      }),
+    addAdHocItem: builder.mutation<GroceryItem, { name: string; quantity: number; unit: string; storeSection: string }>({
+      query: (body) => ({ url: '/grocery/items/ad-hoc', method: 'POST', body }),
       invalidatesTags: ['GroceryList'],
     }),
     deleteGroceryItem: builder.mutation<void, string>({
@@ -195,100 +269,107 @@ export const api = createApi({
       invalidatesTags: ['GroceryList'],
     }),
 
-    // Substitutions
+    // Substitution rules, constraints, synonyms
     getSubstitutions: builder.query<Substitution[], void>({
       query: () => '/substitutions',
       providesTags: ['Substitutions'],
     }),
-    createSubstitution: builder.mutation<Substitution, Partial<Substitution>>({
+    createSubstitution: builder.mutation<Substitution, Omit<Substitution, 'id'>>({
       query: (body) => ({ url: '/substitutions', method: 'POST', body }),
-      invalidatesTags: ['Substitutions', 'GroceryList'],
+      invalidatesTags: ['Substitutions', ...KITCHEN_INPUTS],
     }),
     deleteSubstitution: builder.mutation<void, string>({
       query: (id) => ({ url: `/substitutions/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Substitutions', 'GroceryList'],
+      invalidatesTags: ['Substitutions', ...KITCHEN_INPUTS],
     }),
-
-    // Constraints
     getConstraints: builder.query<UserConstraint[], void>({
       query: () => '/substitutions/constraints',
       providesTags: ['Constraints'],
     }),
-    createConstraint: builder.mutation<UserConstraint, Partial<UserConstraint>>({
+    createConstraint: builder.mutation<UserConstraint, { constraintType: string; constraintValue: string }>({
       query: (body) => ({ url: '/substitutions/constraints', method: 'POST', body }),
-      invalidatesTags: ['Constraints', 'GroceryList'],
+      invalidatesTags: ['Constraints', ...KITCHEN_INPUTS],
+    }),
+    toggleConstraint: builder.mutation<UserConstraint, { id: string; isActive: boolean }>({
+      query: ({ id, isActive }) => ({ url: `/substitutions/constraints/${id}`, method: 'PATCH', body: { isActive } }),
+      invalidatesTags: ['Constraints', ...KITCHEN_INPUTS],
     }),
     deleteConstraint: builder.mutation<void, string>({
       query: (id) => ({ url: `/substitutions/constraints/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Constraints', 'GroceryList'],
+      invalidatesTags: ['Constraints', ...KITCHEN_INPUTS],
     }),
-
-    // Synonyms
-    getSynonyms: builder.query<{ id: string; synonym: string; canonicalName: string }[], void>({
+    getSynonyms: builder.query<Synonym[], void>({
       query: () => '/substitutions/synonyms',
       providesTags: ['Substitutions'],
     }),
-    createSynonym: builder.mutation<any, { synonym: string; canonicalName: string }>({
+    createSynonym: builder.mutation<Synonym, { synonym: string; canonicalName: string }>({
       query: (body) => ({ url: '/substitutions/synonyms', method: 'POST', body }),
-      invalidatesTags: ['Substitutions', 'GroceryList'],
+      invalidatesTags: ['Substitutions', ...KITCHEN_INPUTS],
     }),
     deleteSynonym: builder.mutation<void, string>({
       query: (id) => ({ url: `/substitutions/synonyms/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Substitutions', 'GroceryList'],
+      invalidatesTags: ['Substitutions', ...KITCHEN_INPUTS],
     }),
 
-    // AI Endpoints
-    aiSuggestRecipes: builder.mutation<{ suggestions: any[]; source: string }, void>({
-      query: () => ({ url: '/ai/suggest-recipes', method: 'POST' }),
+    // System
+    getAnalytics: builder.query<AnalyticsSummary, string>({
+      query: (weekStart) => `/analytics/summary?weekStart=${weekStart}`,
+      providesTags: ['Analytics', 'GroceryList'],
     }),
-    aiEstimateNutrition: builder.mutation<{ nutrition: any; source: string }, { recipeName: string; ingredients?: any[] }>({
-      query: (body) => ({ url: '/ai/estimate-nutrition', method: 'POST', body }),
+    resetData: builder.mutation<void, void>({
+      query: () => ({ url: '/reset', method: 'POST' }),
+      invalidatesTags: ['Recipes', 'MealPlan', 'Pantry', 'GroceryList', 'Substitutions', 'Constraints', 'Kitchen', 'Analytics'],
     }),
-    aiEstimateCost: builder.mutation<{ totalCost: number; breakdown?: any[]; source: string }, void>({
-      query: () => ({ url: '/ai/estimate-cost', method: 'POST' }),
+    reseedData: builder.mutation<void, void>({
+      query: () => ({ url: '/reseed', method: 'POST' }),
+      invalidatesTags: ['Recipes', 'MealPlan', 'Pantry', 'GroceryList', 'Substitutions', 'Constraints', 'Kitchen', 'Analytics'],
     }),
-    aiSuggestSubstitution: builder.mutation<{ substitutions: any[]; source: string }, { ingredient: string }>({
-      query: (body) => ({ url: '/ai/suggest-substitution', method: 'POST', body }),
+
+    // Smart kitchen (Gemini with built-in fallbacks)
+    getAiStatus: builder.query<{ enabled: boolean; model: string }, void>({
+      query: () => '/ai/status',
     }),
-    aiWeeklyPlan: builder.mutation<{ plan: any[]; source: string }, void>({
-      query: () => ({ url: '/ai/weekly-plan', method: 'POST' }),
+    recommendRecipes: builder.query<Sourced<RecipeMatch[]> & { semantic: boolean }, string>({
+      query: (q) => `/ai/recommend?q=${encodeURIComponent(q)}`,
+      providesTags: ['Kitchen'],
+    }),
+    getDinnerPick: builder.query<Sourced<DinnerPick>, void>({
+      query: () => '/ai/dinner',
+      providesTags: ['Kitchen'],
+    }),
+    getRecipeFix: builder.query<Sourced<RecipeFix>, string>({
+      query: (id) => `/ai/fix-recipe/${id}`,
+      providesTags: ['Kitchen'],
+    }),
+    suggestSubstitutes: builder.mutation<Sourced<IngredientFix>, string>({
+      query: (ingredient) => ({ url: '/ai/substitutes', method: 'POST', body: { ingredient } }),
+    }),
+    getRecipeIdeas: builder.mutation<Sourced<RecipeIdea[]>, void>({
+      query: () => ({ url: '/ai/ideas', method: 'POST' }),
+    }),
+    getNutrition: builder.query<Sourced<DayNutrition[]>, string>({
+      query: (weekStart) => `/ai/nutrition?weekStart=${weekStart}`,
+      providesTags: ['MealPlan'],
+    }),
+    estimateCost: builder.mutation<Sourced<CostEstimate>, void>({
+      query: () => ({ url: '/ai/cost', method: 'POST' }),
+    }),
+    askAssistant: builder.mutation<{ reply: string; actions: ProposedAction[] }, ChatMessage[]>({
+      query: (messages) => ({ url: '/ai/assistant', method: 'POST', body: { messages } }),
     }),
   }),
 });
 
 export const {
-  useGetRecipesQuery,
-  useGetRecipeQuery,
-  useCreateRecipeMutation,
-  useUpdateRecipeMutation,
-  useDeleteRecipeMutation,
-  useGetMealPlanQuery,
-  useAddMealPlanEntryMutation,
-  useUpdateMealPlanEntryMutation,
-  useDeleteMealPlanEntryMutation,
-  useGetPantryQuery,
-  useAddPantryItemMutation,
-  useUpdatePantryItemMutation,
-  useDeletePantryItemMutation,
-  useGenerateGroceryListMutation,
-  useGetGroceryListQuery,
-  useCheckGroceryItemMutation,
-  useOverrideGroceryItemMutation,
-  useMarkAlreadyHaveMutation,
-  useAddAdHocItemMutation,
-  useDeleteGroceryItemMutation,
-  useGetSubstitutionsQuery,
-  useCreateSubstitutionMutation,
-  useDeleteSubstitutionMutation,
-  useGetConstraintsQuery,
-  useCreateConstraintMutation,
-  useDeleteConstraintMutation,
-  useAiSuggestRecipesMutation,
-  useAiEstimateNutritionMutation,
-  useAiEstimateCostMutation,
-  useAiSuggestSubstitutionMutation,
-  useAiWeeklyPlanMutation,
-  useGetSynonymsQuery,
-  useCreateSynonymMutation,
-  useDeleteSynonymMutation,
+  useGetRecipesQuery, useCreateRecipeMutation, useUpdateRecipeMutation, useDeleteRecipeMutation,
+  useGetMealPlanQuery, useGetLeftoversQuery, useAddMealPlanEntryMutation, useUpdateMealPlanEntryMutation, useDeleteMealPlanEntryMutation,
+  useGetPantryQuery, useAddPantryItemMutation, useUpdatePantryItemMutation, useDeletePantryItemMutation,
+  useGetGroceryListQuery, useCheckGroceryItemMutation, useOverrideGroceryItemMutation, useMarkAlreadyHaveMutation,
+  useAddAdHocItemMutation, useDeleteGroceryItemMutation,
+  useGetSubstitutionsQuery, useCreateSubstitutionMutation, useDeleteSubstitutionMutation,
+  useGetConstraintsQuery, useCreateConstraintMutation, useToggleConstraintMutation, useDeleteConstraintMutation,
+  useGetSynonymsQuery, useCreateSynonymMutation, useDeleteSynonymMutation,
+  useGetAnalyticsQuery, useResetDataMutation, useReseedDataMutation,
+  useGetAiStatusQuery, useRecommendRecipesQuery, useGetDinnerPickQuery, useGetRecipeFixQuery,
+  useSuggestSubstitutesMutation, useGetRecipeIdeasMutation, useGetNutritionQuery, useEstimateCostMutation, useAskAssistantMutation,
 } = api;

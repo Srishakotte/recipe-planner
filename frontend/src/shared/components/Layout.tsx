@@ -1,75 +1,96 @@
+import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { BarChart3, BookOpen, CalendarDays, ChefHat, Home, Refrigerator, Repeat, ShoppingCart, Sparkles } from 'lucide-react';
+import { useGetAiStatusQuery } from '../../app/api';
+import { cx } from '../ui';
+import ToastContainer from './Toast';
+import AssistantPanel from './AssistantPanel';
 
-const navItems = [
-  { to: '/home', label: 'Home', icon: '🏡' },
-  { to: '/meal-plan', label: 'Meal Plan', icon: '📅' },
-  { to: '/grocery-list', label: 'Grocery List', icon: '🛒' },
-  { to: '/recipes', label: 'Recipes', icon: '📖' },
-  { to: '/pantry', label: 'Pantry', icon: '🏠' },
-  { to: '/substitutions', label: 'Substitutions', icon: '🔄' },
-  { to: '/dashboard', label: 'Analytics', icon: '📊' },
+const NAV = [
+  { to: '/home', label: 'Today', icon: Home },
+  { to: '/meal-plan', label: 'Plan', icon: CalendarDays },
+  { to: '/grocery-list', label: 'Groceries', icon: ShoppingCart },
+  { to: '/recipes', label: 'Recipes', icon: BookOpen },
+  { to: '/pantry', label: 'Pantry', icon: Refrigerator },
+  { to: '/substitutions', label: 'Swaps', icon: Repeat },
+  { to: '/dashboard', label: 'Insights', icon: BarChart3 },
 ];
 
-export default function Layout() {
+function AiStatusPill() {
+  const { data } = useGetAiStatusQuery();
+  if (!data) return null;
   return (
-    <div className="flex h-screen overflow-hidden bg-[#faf8f5]">
-      {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 bg-gradient-to-b from-[#1a3a2a] to-[#0f2318] flex flex-col shadow-2xl">
-        {/* Logo */}
-        <div className="p-6 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-lg">
-              <span className="text-white text-lg">🍽️</span>
-            </div>
-            <div>
-              <h1 className="text-white font-bold text-lg leading-tight">Meal</h1>
-              <h1 className="text-green-300 font-bold text-lg leading-tight -mt-1">Planner</h1>
-            </div>
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs">
+      <div className="flex items-center gap-2 font-medium text-slate-700">
+        <span className={cx('size-2 rounded-full', data.enabled ? 'bg-violet-500' : 'bg-slate-300')} />
+        {data.enabled ? 'AI on' : 'AI off'}
+      </div>
+      <p className="mt-1 text-slate-500">{data.enabled ? `Gemini · ${data.model}` : 'Add GEMINI_API_KEY to backend/.env for AI features'}</p>
+    </div>
+  );
+}
+
+export default function Layout() {
+  const [assistantOpen, setAssistantOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen lg:flex">
+      {/* Desktop sidebar */}
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          <span className="flex size-9 items-center justify-center rounded-xl bg-brand-600 text-white"><ChefHat className="size-5" /></span>
+          <div className="leading-tight">
+            <p className="text-sm font-semibold text-slate-900">Recipe Planner</p>
+            <p className="text-xs text-slate-500">Plan · Shop · Cook</p>
           </div>
         </div>
-
-        {/* Nav Items */}
-        <nav className="flex-1 px-3 py-2 space-y-1">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/15 text-white shadow-sm backdrop-blur-sm'
-                    : 'text-green-200/70 hover:text-white hover:bg-white/8'
-                }`
-              }
-            >
-              <span className="text-lg">{item.icon}</span>
-              <span>{item.label}</span>
+        <nav className="flex-1 space-y-0.5 px-3">
+          {NAV.map(({ to, label, icon: Icon }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => cx(
+              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+              isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+            )}>
+              <Icon className="size-4" />{label}
             </NavLink>
           ))}
         </nav>
-
-        {/* Bottom motivational card */}
-        <div className="p-4">
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-            <p className="text-green-100 text-xs font-medium leading-relaxed">
-              "Good food,<br/>Good mood,<br/>Good life"
-            </p>
-            <div className="mt-3 flex gap-1">
-              <span className="text-sm">🥗</span>
-              <span className="text-sm">🥑</span>
-              <span className="text-sm">🍊</span>
-              <span className="text-sm">🥦</span>
-            </div>
-          </div>
+        <div className="space-y-3 p-3">
+          <button onClick={() => setAssistantOpen(true)}
+            className="flex w-full items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-3 py-2.5 text-sm font-medium text-white hover:from-violet-700 hover:to-indigo-700">
+            <Sparkles className="size-4" /> Kitchen assistant
+          </button>
+          <AiStatusPill />
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-8 max-w-[1400px] mx-auto">
-          <Outlet />
+      {/* Mobile top bar */}
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+        <div className="flex items-center gap-2">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-brand-600 text-white"><ChefHat className="size-4" /></span>
+          <span className="text-sm font-semibold text-slate-900">Recipe Planner</span>
         </div>
+        <button onClick={() => setAssistantOpen(true)} aria-label="Open kitchen assistant"
+          className="flex size-9 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><Sparkles className="size-4" /></button>
+      </header>
+
+      <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8">
+        <div className="mx-auto max-w-6xl"><Outlet /></div>
       </main>
+
+      {/* Mobile bottom navigation */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
+        {NAV.map(({ to, label, icon: Icon }) => (
+          <NavLink key={to} to={to} className={({ isActive }) => cx(
+            'flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium',
+            isActive ? 'text-brand-700' : 'text-slate-500',
+          )}>
+            <Icon className="size-5" />{label}
+          </NavLink>
+        ))}
+      </nav>
+
+      <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <ToastContainer />
     </div>
   );
 }
