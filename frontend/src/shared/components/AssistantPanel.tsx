@@ -17,6 +17,22 @@ const EXAMPLES = [
   'What do I still need to buy?',
 ];
 
+/** Renders the small subset of markdown Gemini uses (bold, bullet lists) as React nodes, no raw HTML. */
+function RichText({ text }: { text: string }) {
+  const inline = (line: string) => line.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') ? <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong> : part);
+  return (
+    <div className="space-y-1">
+      {text.trim().split(/\n+/).map((line, i) => {
+        const bullet = line.match(/^\s*[-*•]\s+(.*)/);
+        return bullet
+          ? <p key={i} className="flex gap-1.5"><span className="text-slate-400">•</span><span>{inline(bullet[1])}</span></p>
+          : <p key={i}>{inline(line)}</p>;
+      })}
+    </div>
+  );
+}
+
 function ActionCard({ action }: { action: ProposedAction }) {
   const [addMeal, { isLoading: adding }] = useAddMealPlanEntryMutation();
   const [removeMeal, { isLoading: removing }] = useDeleteMealPlanEntryMutation();
@@ -103,9 +119,9 @@ export default function AssistantPanel({ open, onClose }: { open: boolean; onClo
             </div>
           ) : turns.map((turn, i) => (
             <div key={i} className={cx('flex flex-col gap-2', turn.role === 'user' ? 'items-end' : 'items-start')}>
-              <div className={cx('max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm',
+              <div className={cx('max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm',
                 turn.role === 'user' ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700')}>
-                {turn.text}
+                {turn.role === 'user' ? turn.text : <RichText text={turn.text} />}
               </div>
               {turn.actions && turn.actions.length > 0 && (
                 <div className="w-full space-y-1.5">{turn.actions.map((a, j) => <ActionCard key={j} action={a} />)}</div>

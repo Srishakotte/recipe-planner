@@ -11,12 +11,38 @@ import { z, ZodType } from 'zod';
 export type Source = 'ai' | 'fallback';
 export interface Sourced<T> { data: T; source: Source }
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// "-latest" aliases always point at a current model, so the default never gets retired
+const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+// used once when the main model is overloaded (503/429) or too slow
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest';
 const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
 const EMBEDDING_DIMENSIONS = 768;
 const REQUESTS_PER_MINUTE = Number(process.env.GEMINI_RPM || 10); // free tier is ~10/min for flash
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const CACHE_MAX = 300;
+const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 25_000); // slow answer -> fall back instead of hanging the UI
+
+/** Rejects if Gemini takes longer than TIMEOUT_MS, so callers fall back to built-in logic. */
+function withTimeout<T>(promise: T, label: string): Promise<Awaited<T>> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const isTransient = (error: unknown) => /\b(503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|timed out|fetch failed)\b/i.test(String((error as Error)?.message ?? error));
+
+/** generateContent on the main model, retried once on the fallback model if the main one is busy. */
+async function generate(ai: any, request: Record<string, unknown>, label: string) {
+  try {
+    return await withTimeout(ai.models.generateContent({ ...request, model: MODEL }), label);
+  } catch (error) {
+    if (!isTransient(error) || FALLBACK_MODEL === MODEL) throw error;
+    console.warn(`[ai] ${MODEL} busy (${String((error as Error).message).slice(0, 60)}), retrying on ${FALLBACK_MODEL}`);
+    return withTimeout(ai.models.generateContent({ ...request, model: FALLBACK_MODEL }), label);
+  }
+}
 
 export function isAiEnabled(): boolean {
   const key = process.env.GEMINI_API_KEY?.trim();
@@ -73,8 +99,7 @@ export async function ask<T>(schema: ZodType<T>, prompt: string, options: { syst
   if (!takeRateSlot()) return null;
   try {
     const ai = await getClient();
-    const response = await ai.models.generateContent({
-      model: MODEL,
+    const response = await generate(ai, {
       contents: prompt,
       config: {
         systemInstruction: options.system,
@@ -82,7 +107,7 @@ export async function ask<T>(schema: ZodType<T>, prompt: string, options: { syst
         responseJsonSchema: z.toJSONSchema(schema as never),
         temperature: 0.4,
       },
-    });
+    }, 'generateContent');
     const parsed = schema.safeParse(JSON.parse(response.text ?? ''));
     if (!parsed.success) {
       console.warn('[ai] response did not match schema:', parsed.error.issues[0]?.message);
@@ -112,11 +137,11 @@ export async function embed(texts: string[], taskType: 'RETRIEVAL_DOCUMENT' | 'R
   if (!takeRateSlot()) return null;
   try {
     const ai = await getClient();
-    const response = await ai.models.embedContent({
+    const response = await withTimeout(ai.models.embedContent({
       model: EMBEDDING_MODEL,
       contents: texts,
       config: { taskType, outputDimensionality: EMBEDDING_DIMENSIONS },
-    });
+    }), 'embedContent');
     const vectors: number[][] = (response.embeddings ?? []).map((e: { values?: number[] }) => e.values ?? []);
     if (vectors.length !== texts.length) return null;
     cacheSet(key, vectors);
@@ -159,7 +184,7 @@ export async function chatWithTools(messages: ChatMessage[], tools: ToolDefiniti
   try {
     for (let step = 0; step <= maxSteps; step++) {
       if (!takeRateSlot()) return 'I hit the free Gemini rate limit. Please try again in a minute.';
-      const response = await ai.models.generateContent({ model: MODEL, contents, config });
+      const response = await generate(ai, { contents, config }, 'chat');
       const calls: { name: string; args?: Record<string, unknown> }[] = response.functionCalls ?? [];
       if (calls.length === 0) return response.text ?? '';
       contents.push(response.candidates[0].content);

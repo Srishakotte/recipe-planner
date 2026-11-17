@@ -208,7 +208,13 @@ async function rankRecipes(ctx: KitchenContext, query: string, limit: number): P
     const scored = { ...withRelevance, score: Math.round(scoreOf(withRelevance, !!trimmed)) };
     return { ...scored, reason: describe(scored) };
   });
-  if (trimmed && !semantic && matches.some(m => m.relevance > 0)) matches = matches.filter(m => m.relevance > 0);
+  if (trimmed && semantic) {
+    // keep recipes reasonably close to the best match, so pantry coverage can't pull in unrelated dishes
+    const best = Math.max(...matches.map(m => m.relevance));
+    matches = matches.filter(m => m.relevance >= best * 0.75);
+  } else if (trimmed && matches.some(m => m.relevance > 0)) {
+    matches = matches.filter(m => m.relevance > 0);
+  }
   matches.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
   return { data: matches.slice(0, limit), source: semantic ? 'ai' : 'fallback', semantic };

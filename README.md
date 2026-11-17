@@ -538,7 +538,7 @@ Rule: **the AI decides, the engine computes.** Gemini picks, explains and search
 
 How it's built: one module (`backend/src/ai/client.ts`) talks to Gemini. Structured JSON output is validated with zod, answers are cached and rate-limited for the free tier, and `withFallback()` makes every feature degrade gracefully. Feature logic lives in `backend/src/services/`.
 
-Setup: get a free key at https://aistudio.google.com/apikey and set `GEMINI_API_KEY` in `backend/.env`, then restart the backend. Optional: `GEMINI_MODEL` (default `gemini-2.5-flash`), `GEMINI_RPM` (default 10). After pulling this change, run `npx prisma db push` once (recipes gained two columns for search embeddings).
+Setup: get a free key at https://aistudio.google.com/apikey and set `GEMINI_API_KEY` in `backend/.env`, then restart the backend. Optional: `GEMINI_MODEL` (default `gemini-flash-latest`), `GEMINI_FALLBACK_MODEL` (default `gemini-flash-lite-latest`, used once when the main model is overloaded), `GEMINI_RPM` (default 10), `GEMINI_TIMEOUT_MS` (default 25000). After pulling this change, run `npx prisma db push` once (recipes gained two columns for search embeddings).
 
 Package: @google/genai
 
