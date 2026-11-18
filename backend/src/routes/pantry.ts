@@ -23,6 +23,13 @@ router.post('/', asyncHandler(async (req, res) => {
   res.status(201).json(await prisma.pantryItem.create({ data: { ...body, expirationDate: toDate(body.expirationDate) } }));
 }));
 
+// add several items at once (confirmed results of a fridge / receipt scan)
+router.post('/bulk', asyncHandler(async (req, res) => {
+  const { items } = parseBody(z.object({ items: z.array(pantrySchema).min(1).max(100) }), req.body);
+  await prisma.pantryItem.createMany({ data: items.map(i => ({ ...i, expirationDate: toDate(i.expirationDate) })) });
+  res.status(201).json({ added: items.length });
+}));
+
 router.put('/:id', asyncHandler(async (req, res) => {
   const { expirationDate, ...rest } = parseBody(pantrySchema.partial(), req.body);
   res.json(await prisma.pantryItem.update({

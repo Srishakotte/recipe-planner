@@ -23,10 +23,10 @@ const CACHE_MAX = 300;
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 25_000); // slow answer -> fall back instead of hanging the UI
 
 /** Rejects if Gemini takes longer than TIMEOUT_MS, so callers fall back to built-in logic. */
-function withTimeout<T>(promise: T, label: string): Promise<Awaited<T>> {
+function withTimeout<T>(promise: T, label: string, ms = TIMEOUT_MS): Promise<Awaited<T>> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS);
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
@@ -34,13 +34,13 @@ function withTimeout<T>(promise: T, label: string): Promise<Awaited<T>> {
 const isTransient = (error: unknown) => /\b(503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|timed out|fetch failed)\b/i.test(String((error as Error)?.message ?? error));
 
 /** generateContent on the main model, retried once on the fallback model if the main one is busy. */
-async function generate(ai: any, request: Record<string, unknown>, label: string) {
+async function generate(ai: any, request: Record<string, unknown>, label: string, ms = TIMEOUT_MS) {
   try {
-    return await withTimeout(ai.models.generateContent({ ...request, model: MODEL }), label);
+    return await withTimeout(ai.models.generateContent({ ...request, model: MODEL }), label, ms);
   } catch (error) {
     if (!isTransient(error) || FALLBACK_MODEL === MODEL) throw error;
     console.warn(`[ai] ${MODEL} busy (${String((error as Error).message).slice(0, 60)}), retrying on ${FALLBACK_MODEL}`);
-    return withTimeout(ai.models.generateContent({ ...request, model: FALLBACK_MODEL }), label);
+    return withTimeout(ai.models.generateContent({ ...request, model: FALLBACK_MODEL }), label, ms);
   }
 }
 
@@ -89,7 +89,10 @@ function cacheSet(key: string, value: unknown) {
 const hashOf = (...parts: unknown[]) => createHash('sha1').update(JSON.stringify(parts)).digest('hex');
 
 /** Ask Gemini for JSON matching `schema`. Returns null on any failure (no key, quota, bad output). */
-export async function ask<T>(schema: ZodType<T>, prompt: string, options: { system?: string; cache?: boolean } = {}): Promise<T | null> {
+/** Text, or text + images (base64) for Gemini Vision. */
+export type Prompt = string | ({ text: string } | { inlineData: { mimeType: string; data: string } })[];
+
+export async function ask<T>(schema: ZodType<T>, prompt: Prompt, options: { system?: string; cache?: boolean; timeoutMs?: number } = {}): Promise<T | null> {
   if (!isAiEnabled()) return null;
   const key = hashOf('ask', MODEL, options.system, prompt);
   if (options.cache !== false) {
@@ -100,14 +103,14 @@ export async function ask<T>(schema: ZodType<T>, prompt: string, options: { syst
   try {
     const ai = await getClient();
     const response = await generate(ai, {
-      contents: prompt,
+      contents: typeof prompt === 'string' ? prompt : [{ role: 'user', parts: prompt }],
       config: {
         systemInstruction: options.system,
         responseMimeType: 'application/json',
         responseJsonSchema: z.toJSONSchema(schema as never),
         temperature: 0.4,
       },
-    }, 'generateContent');
+    }, 'generateContent', options.timeoutMs);
     const parsed = schema.safeParse(JSON.parse(response.text ?? ''));
     if (!parsed.success) {
       console.warn('[ai] response did not match schema:', parsed.error.issues[0]?.message);
@@ -134,7 +137,6 @@ export async function embed(texts: string[], taskType: 'RETRIEVAL_DOCUMENT' | 'R
   const key = hashOf('embed', EMBEDDING_MODEL, taskType, texts);
   const cached = cacheGet<number[][]>(key);
   if (cached) return cached;
-  if (!takeRateSlot()) return null;
   try {
     const ai = await getClient();
     const response = await withTimeout(ai.models.embedContent({

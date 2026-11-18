@@ -14,7 +14,8 @@ import { findCommonSwaps } from '../ai/data/commonSwaps';
 import { estimateIngredient, addMacros, roundMacros, ZERO_MACROS, Macros } from '../ai/data/nutrition';
 import { startOfToday, HttpError } from '../lib/http';
 
-const ALWAYS_AVAILABLE = new Set(['water', 'ice']);
+// basics nearly every kitchen has; they don't count as "missing"
+const ALWAYS_AVAILABLE = new Set(['water', 'ice', 'salt', 'pepper', 'black pepper', 'salt and pepper', 'sea salt']);
 const EXPIRING_SOON_DAYS = 3;
 const DAY_MS = 86_400_000;
 
@@ -25,15 +26,22 @@ export async function loadSynonymMap(): Promise<SynonymMap> {
   return Object.fromEntries(synonyms.map(s => [s.synonym.toLowerCase(), s.canonicalName.toLowerCase()]));
 }
 
+export type Scope = 'all' | 'mine';
 type RecipeWithIngredients = Awaited<ReturnType<typeof loadRecipes>>[number];
-const loadRecipes = () => prisma.recipe.findMany({ include: { ingredients: { orderBy: { sortOrder: 'asc' } } }, orderBy: { name: 'asc' } });
+// embeddings are large; they live in an in-memory cache (see vectorsFor), not in every query
+const loadRecipes = (scope: Scope = 'all') => prisma.recipe.findMany({
+  where: scope === 'mine' ? { saved: true } : {},
+  include: { ingredients: { orderBy: { sortOrder: 'asc' } } },
+  omit: { embedding: true },
+  orderBy: { name: 'asc' },
+});
 
 export interface PantryStock { name: string; quantity: number; unit: string; daysLeft: number | null }
 
-async function loadContext() {
+async function loadContext(scope: Scope = 'all') {
   const today = startOfToday();
   const [recipes, pantryRows, constraints, rules, synonymMap, nearbyMeals, slotHistory] = await Promise.all([
-    loadRecipes(),
+    loadRecipes(scope),
     prisma.pantryItem.findMany(),
     prisma.userConstraint.findMany({ where: { isActive: true } }),
     prisma.substitution.findMany(),
@@ -69,9 +77,14 @@ function breakfastOnlyRecipes(history: { recipeId: string; mealSlot: string }[])
   return new Set([...slots].filter(([, s]) => s.size === 1 && s.has('breakfast')).map(([id]) => id));
 }
 
-/** "chicken" in the pantry covers "chicken breast" in a recipe and vice versa. */
+/** "unsalted butter" -> butter, "red onion" -> onion; but "coconut milk" is not milk. */
+const DESCRIPTORS = new Set(['unsalted', 'salted', 'red', 'white', 'yellow', 'green', 'brown', 'fresh', 'large', 'small', 'medium', 'whole', 'free-range', 'organic', 'chopped', 'minced', 'grated', 'plain', 'full-fat', 'skimmed', 'semi-skimmed', 'boneless', 'skinless', 'baby', 'ripe', 'dried', 'frozen']);
+export const describes = (ingredient: string, base: string) =>
+  ingredient.endsWith(' ' + base) && ingredient.slice(0, -base.length - 1).split(' ').every(w => DESCRIPTORS.has(w));
+
+/** "chicken" in the pantry covers "chicken breast" and "unsalted butter" is covered by "butter". */
 function findInPantry(ingredient: string, pantry: PantryStock[]): PantryStock | undefined {
-  return pantry.find(p => p.name === ingredient || ingredient.startsWith(p.name + ' ') || p.name.startsWith(ingredient + ' '));
+  return pantry.find(p => p.name === ingredient || ingredient.startsWith(p.name + ' ') || p.name.startsWith(ingredient + ' ') || describes(ingredient, p.name));
 }
 
 // ---------------------------------------------------------------- scoring
@@ -81,6 +94,10 @@ export interface RecipeMatch {
   name: string;
   description: string | null;
   defaultServings: number;
+  imageUrl: string | null;
+  cuisine: string | null;
+  category: string | null;
+  saved: boolean;
   have: string[];
   missing: string[];
   expiring: { name: string; daysLeft: number }[];
@@ -116,6 +133,7 @@ function analyzeRecipe(recipe: RecipeWithIngredients, ctx: KitchenContext): Omit
   const total = have.length + missing.length;
   return {
     recipeId: recipe.id, name: recipe.name, description: recipe.description, defaultServings: recipe.defaultServings,
+    imageUrl: recipe.imageUrl, cuisine: recipe.cuisine, category: recipe.category, saved: recipe.saved,
     have, missing, expiring, conflicts,
     coverage: total ? have.length / total : 0,
     recentlyPlanned: ctx.recentRecipeIds.has(recipe.id),
@@ -137,39 +155,83 @@ function describe(m: Omit<RecipeMatch, 'reason'>): string {
 }
 
 function scoreOf(m: Omit<RecipeMatch, 'score' | 'reason'>, hasQuery: boolean): number {
-  const pantryScore = m.coverage * 60 + Math.min(m.expiring.length, 3) * 15 - m.conflicts.length * 50 - (m.recentlyPlanned ? 20 : 0);
-  return hasQuery ? m.relevance * 100 + pantryScore * 0.5 : pantryScore;
+  const pantryScore = m.coverage * 60 + Math.min(m.expiring.length, 3) * 15 - m.conflicts.length * 50 - (m.recentlyPlanned ? 20 : 0) + (m.saved ? 5 : 0);
+  return hasQuery ? m.relevance * 100 + pantryScore * 0.4 : pantryScore;
 }
 
-// ---------------------------------------------------------------- search (RAG with keyword fallback)
+// ---------------------------------------------------------------- hybrid search (RAG): embeddings + keywords
 
-const STOPWORDS = new Set(['the', 'and', 'with', 'for', 'something', 'some', 'want', 'make', 'can', 'what', 'using', 'use', 'that', 'have', 'quick', 'easy', 'dish', 'recipe', 'food', 'tonight', 'today']);
+const STOPWORDS = new Set(['the', 'and', 'with', 'for', 'something', 'some', 'want', 'make', 'can', 'what', 'using', 'use', 'that', 'have', 'quick', 'easy', 'dish', 'recipe', 'recipes', 'food', 'tonight', 'today', 'like', 'good', 'nice', 'cook', 'meal', 'eat']);
 
+/** The text that represents a recipe for retrieval. Changing it re-embeds the recipe. */
 function recipeText(r: RecipeWithIngredients): string {
-  return `${r.name}. ${r.description ?? ''}. Ingredients: ${r.ingredients.map(i => i.name).join(', ')}. ${r.steps ?? ''}`.slice(0, 2000);
+  return [
+    r.name,
+    [r.cuisine, r.category, r.tags].filter(Boolean).join(', '),
+    r.description ?? '',
+    `Ingredients: ${r.ingredients.map(i => i.name).join(', ')}`,
+    (r.steps ?? '').slice(0, 600),
+  ].filter(Boolean).join('. ');
 }
 
+/** Keyword relevance 0..1: name and tags weigh more than ingredients and steps. */
 function keywordRelevance(query: string, r: RecipeWithIngredients): number {
   const constraintWords = new Set(Object.keys(CONSTRAINT_KEYWORDS).flatMap(c => c.split('-')));
-  const tokens = query.toLowerCase().split(/[^a-z]+/).filter(t => t.length > 2 && !STOPWORDS.has(t) && !constraintWords.has(t));
+  const tokens = query.toLowerCase().split(/[^a-z]+/).filter(t => t.length > 2 && !STOPWORDS.has(t) && !constraintWords.has(t)).map(t => t.replace(/(es|s)$/, ''));
   if (tokens.length === 0) return 0;
-  const haystack = recipeText(r).toLowerCase();
-  return tokens.filter(t => haystack.includes(t.replace(/s$/, ''))).length / tokens.length;
+  const name = r.name.toLowerCase();
+  const labels = [r.cuisine, r.category, r.tags].filter(Boolean).join(' ').toLowerCase();
+  const ingredients = r.ingredients.map(i => i.name).join(' ').toLowerCase();
+  const body = `${r.description ?? ''} ${r.steps ?? ''}`.toLowerCase();
+  const score = tokens.reduce((sum, t) => sum + (name.includes(t) ? 1 : labels.includes(t) ? 0.8 : ingredients.includes(t) ? 0.6 : body.includes(t) ? 0.25 : 0), 0);
+  return score / tokens.length;
 }
 
-/** Stores an embedding per recipe, recomputed only when the recipe text changes. */
-async function recipeEmbeddings(recipes: RecipeWithIngredients[]): Promise<Map<string, number[]> | null> {
-  const keyOf = (r: RecipeWithIngredients) => createHash('sha1').update(recipeText(r)).digest('hex');
-  const stale = recipes.filter(r => r.embeddingKey !== keyOf(r) || !Array.isArray(r.embedding));
-  if (stale.length) {
-    const vectors = await embed(stale.map(recipeText), 'RETRIEVAL_DOCUMENT');
-    if (!vectors) return null;
-    await prisma.$transaction(stale.map((r, i) => prisma.recipe.update({
-      where: { id: r.id }, data: { embedding: vectors[i], embeddingKey: keyOf(r) },
-    })));
-    stale.forEach((r, i) => { r.embedding = vectors[i]; });
+// recipe id -> { key of embedded text, vector }; filled from the DB once, then kept in sync
+const vectorCache = new Map<string, { key: string; vector: number[] }>();
+let vectorCacheLoaded = false;
+// free tier allows 100 embedded texts per minute, so work in batches below that
+const EMBED_BATCH = 90;
+
+/**
+ * Vectors for these recipes; embeds (and stores) up to `budget` new or changed ones per call,
+ * so a search never waits on hundreds of embeddings. null if AI is unavailable.
+ */
+async function vectorsFor(recipes: RecipeWithIngredients[], budget = EMBED_BATCH): Promise<Map<string, number[]> | null> {
+  if (!isAiEnabled()) return null;
+  if (!vectorCacheLoaded) {
+    const rows = await prisma.recipe.findMany({ where: { embeddingKey: { not: null } }, select: { id: true, embeddingKey: true, embedding: true } });
+    for (const row of rows) if (Array.isArray(row.embedding)) vectorCache.set(row.id, { key: row.embeddingKey!, vector: row.embedding as number[] });
+    vectorCacheLoaded = true;
   }
-  return new Map(recipes.map(r => [r.id, r.embedding as number[]]));
+  const keyOf = (r: RecipeWithIngredients) => createHash('sha1').update(recipeText(r)).digest('hex');
+  const stale = recipes.filter(r => vectorCache.get(r.id)?.key !== keyOf(r)).slice(0, budget);
+  for (let i = 0; i < stale.length; i += EMBED_BATCH) {
+    const batch = stale.slice(i, i + EMBED_BATCH);
+    const vectors = await embed(batch.map(recipeText), 'RETRIEVAL_DOCUMENT');
+    if (!vectors) return vectorCache.size ? new Map([...vectorCache].map(([id, v]) => [id, v.vector])) : null;
+    await prisma.$transaction(batch.map((r, j) => prisma.recipe.update({ where: { id: r.id }, data: { embedding: vectors[j], embeddingKey: keyOf(r) } })));
+    batch.forEach((r, j) => vectorCache.set(r.id, { key: keyOf(r), vector: vectors[j] }));
+  }
+  return new Map([...vectorCache].map(([id, v]) => [id, v.vector]));
+}
+
+/**
+ * Embeds every recipe that isn't embedded yet (after importing the library), one batch per
+ * minute to stay inside the free quota. Reports progress through `onProgress`.
+ */
+export async function embedAllRecipes(onProgress: (embedded: number) => void = () => {}): Promise<number> {
+  const recipes = await loadRecipes('all');
+  let embedded = 0;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const vectors = await vectorsFor(recipes);
+    if (!vectors) return embedded;
+    embedded = recipes.filter(r => vectors.has(r.id)).length;
+    onProgress(embedded);
+    if (embedded >= recipes.length) break;
+    await new Promise(resolve => setTimeout(resolve, 61_000));
+  }
+  return embedded;
 }
 
 /** Words in the query like "vegetarian" or "dairy free" act as hard filters. */
@@ -178,57 +240,66 @@ function constraintsInQuery(query: string): string[] {
   return Object.keys(CONSTRAINT_KEYWORDS).filter(c => q.includes(c));
 }
 
-export async function recommend(query = '', limit = 6): Promise<Sourced<RecipeMatch[]> & { semantic: boolean }> {
-  return rankRecipes(await loadContext(), query, limit);
+export interface SearchOptions { query?: string; limit?: number; scope?: Scope; cuisine?: string; category?: string }
+
+export async function recommend(options: SearchOptions = {}): Promise<Sourced<RecipeMatch[]> & { semantic: boolean }> {
+  return rankRecipes(await loadContext(options.scope), options);
 }
 
-async function rankRecipes(ctx: KitchenContext, query: string, limit: number): Promise<Sourced<RecipeMatch[]> & { semantic: boolean }> {
+async function rankRecipes(ctx: KitchenContext, { query = '', limit = 12, cuisine, category }: SearchOptions): Promise<Sourced<RecipeMatch[]> & { semantic: boolean }> {
   const trimmed = query.trim();
   const queryConstraints = trimmed ? constraintsInQuery(trimmed) : [];
-  const recipes = ctx.recipes.filter(r => queryConstraints.every(c =>
-    !r.ingredients.some(i => conflictsWithConstraint(normalizeIngredientName(i.name, ctx.synonymMap), c))));
+  const recipes = ctx.recipes.filter(r =>
+    (!cuisine || r.cuisine === cuisine) && (!category || r.category === category) &&
+    queryConstraints.every(c => !r.ingredients.some(i => conflictsWithConstraint(normalizeIngredientName(i.name, ctx.synonymMap), c))));
 
   let relevance = new Map<string, number>();
   let semantic = false;
   if (trimmed) {
-    const vectors = isAiEnabled() ? await recipeEmbeddings(recipes) : null;
+    const keyword = new Map(recipes.map(r => [r.id, keywordRelevance(trimmed, r)]));
+    const vectors = await vectorsFor(recipes);
     const queryVector = vectors ? (await embed([trimmed], 'RETRIEVAL_QUERY'))?.[0] : null;
     if (vectors && queryVector) {
       semantic = true;
-      // cosine for this model sits ~0.5 (unrelated) .. ~0.8 (very related); spread it to 0..1
-      relevance = new Map(recipes.map(r => [r.id, Math.max(0, Math.min(1, (cosineSimilarity(queryVector, vectors.get(r.id)!) - 0.5) / 0.3))]));
+      // cosine for this model sits ~0.5 (unrelated) .. ~0.8 (very related); spread it to 0..1, then blend with keywords
+      relevance = new Map(recipes.map(r => {
+        const v = vectors.get(r.id);
+        const sem = v ? Math.max(0, Math.min(1, (cosineSimilarity(queryVector, v) - 0.5) / 0.3)) : 0;
+        return [r.id, 0.7 * sem + 0.3 * Math.min(1, keyword.get(r.id) ?? 0)];
+      }));
     } else {
-      relevance = new Map(recipes.map(r => [r.id, keywordRelevance(trimmed, r)]));
+      relevance = keyword;
     }
   }
 
   let matches = recipes.map(r => {
     const analysis = analyzeRecipe(r, ctx);
-    const withRelevance = { ...analysis, relevance: relevance.get(r.id) ?? 0 };
+    const withRelevance = { ...analysis, relevance: Math.round((relevance.get(r.id) ?? 0) * 100) / 100 };
     const scored = { ...withRelevance, score: Math.round(scoreOf(withRelevance, !!trimmed)) };
     return { ...scored, reason: describe(scored) };
   });
-  if (trimmed && semantic) {
-    // keep recipes reasonably close to the best match, so pantry coverage can't pull in unrelated dishes
-    const best = Math.max(...matches.map(m => m.relevance));
-    matches = matches.filter(m => m.relevance >= best * 0.75);
-  } else if (trimmed && matches.some(m => m.relevance > 0)) {
-    matches = matches.filter(m => m.relevance > 0);
+  if (trimmed) {
+    // keep results close to the best match, so pantry coverage can't pull in unrelated dishes
+    const best = Math.max(0, ...matches.map(m => m.relevance));
+    matches = best > 0 ? matches.filter(m => m.relevance >= best * (semantic ? 0.75 : 0.5)) : [];
   }
   matches.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
   return { data: matches.slice(0, limit), source: semantic ? 'ai' : 'fallback', semantic };
 }
 
+
 // ---------------------------------------------------------------- what's for dinner
 
 export interface DinnerPick { pick: RecipeMatch | null; pitch: string; alternatives: RecipeMatch[] }
 
+const NOT_DINNER = new Set(['Breakfast', 'Dessert', 'Side', 'Starter']);
+
 export async function whatsForDinner(): Promise<Sourced<DinnerPick>> {
   const ctx = await loadContext();
-  const { data: ranked } = await rankRecipes(ctx, '', 50);
+  const { data: ranked } = await rankRecipes(ctx, { limit: 50 });
   // best first: no constraint conflicts, not a breakfast dish, not eaten in the last few days
-  const ok = ranked.filter(m => m.conflicts.length === 0 && !ctx.breakfastOnly.has(m.recipeId));
+  const ok = ranked.filter(m => m.conflicts.length === 0 && !ctx.breakfastOnly.has(m.recipeId) && !NOT_DINNER.has(m.category ?? ''));
   const ordered = [...ok.filter(m => !m.recentlyPlanned), ...ok.filter(m => m.recentlyPlanned)];
   const [pick, ...alternatives] = ordered.length ? ordered : ranked;
   if (!pick) return { data: { pick: null, pitch: 'Add a few recipes and pantry items and I will suggest dinner.', alternatives: [] }, source: 'fallback' };
@@ -237,7 +308,7 @@ export async function whatsForDinner(): Promise<Sourced<DinnerPick>> {
     () => ask(z.object({ pitch: z.string().max(220) }),
       `Write one friendly sentence (max 25 words) recommending "${pick.name}" for dinner tonight. ` +
       `Facts: have ${pick.have.join(', ') || 'nothing'}; missing ${pick.missing.join(', ') || 'nothing'}; ` +
-      `expiring soon: ${pick.expiring.map(e => e.name).join(', ') || 'none'}. Do not invent other facts.`)
+      `expiring soon: ${pick.expiring.map(e => e.name).join(', ') || 'none'}. Do not invent other facts.`, { timeoutMs: 6000 })
       .then(r => r?.pitch ?? null),
     () => `${pick.reason}.`,
   );
@@ -335,7 +406,7 @@ export async function pantryIdeas(): Promise<Sourced<RecipeIdea[]>> {
       { cache: false }))?.ideas ?? null,
     async () => {
       // without AI: the best-matching recipes you already have
-      const { data } = await recommend('', 3);
+      const { data } = await recommend({ limit: 3 });
       return data.map(m => {
         const recipe = ctx.recipes.find(r => r.id === m.recipeId)!;
         return {
@@ -422,4 +493,29 @@ export async function estimateCost(items: { name: string; quantity: number; unit
       `${items.map(i => `${i.quantity} ${i.unit} ${i.name}`).join(', ')}. Give a cost per item and the total.`),
     () => ({ total: items.length === 0 ? 0 : null, items: [] }),
   );
+}
+
+// ---------------------------------------------------------------- scan a fridge / receipt photo (Gemini Vision)
+
+const scanSchema = z.object({
+  items: z.array(z.object({
+    name: z.string(),
+    quantity: z.number().positive(),
+    unit: z.enum(['g', 'kg', 'ml', 'l', 'piece', 'packet', 'can', 'bunch', 'cup']),
+    expiresInDays: z.number().int().min(0).max(365).nullable(),
+  })).max(60),
+});
+export type ScannedItem = z.infer<typeof scanSchema>['items'][number];
+
+/** Reads groceries from a photo. Needs AI (there is no non-AI way to read an image); null otherwise. */
+export async function scanGroceries(imageBase64: string, mimeType: string, kind: 'fridge' | 'receipt'): Promise<ScannedItem[] | null> {
+  const instruction = kind === 'receipt'
+    ? 'This is a grocery receipt. List each food item bought with its quantity and unit (use the pack size when shown). Skip non-food items, prices and totals.'
+    : 'This is a photo of a fridge, pantry shelf or groceries. List each food item you can clearly see with a realistic quantity and unit. Do not guess hidden items.';
+  const result = await ask(scanSchema, [
+    { text: `${instruction} Use simple lowercase ingredient names (e.g. "tomato", "milk", "chicken breast"). ` +
+      'expiresInDays: typical shelf life from today for fresh items (milk 5, leafy greens 4, meat 2, eggs 21), null for long-life items.' },
+    { inlineData: { mimeType, data: imageBase64 } },
+  ], { cache: false });
+  return result?.items ?? null;
 }

@@ -18,6 +18,14 @@ export interface Recipe {
   defaultServings: number;
   description?: string | null;
   steps?: string | null;
+  imageUrl?: string | null;
+  source?: 'user' | 'library' | 'web' | 'ai';
+  cuisine?: string | null;
+  category?: string | null;
+  tags?: string | null;
+  videoUrl?: string | null;
+  sourceUrl?: string | null;
+  saved?: boolean;
   ingredients: Ingredient[];
   createdAt: string;
 }
@@ -26,6 +34,10 @@ export type RecipeInput = {
   name: string;
   description?: string;
   steps?: string;
+  imageUrl?: string | null;
+  cuisine?: string | null;
+  category?: string | null;
+  sourceUrl?: string | null;
   defaultServings: number;
   ingredients: Omit<Ingredient, 'id' | 'sortOrder'>[];
 };
@@ -132,6 +144,10 @@ export interface RecipeMatch {
   name: string;
   description: string | null;
   defaultServings: number;
+  imageUrl: string | null;
+  cuisine: string | null;
+  category: string | null;
+  saved: boolean;
   have: string[];
   missing: string[];
   expiring: { name: string; daysLeft: number }[];
@@ -166,6 +182,12 @@ export type ProposedAction =
   | { type: 'remove_meal'; mealId: string; recipeName: string; planDate: string; mealSlot: string };
 
 export interface ChatMessage { role: 'user' | 'model'; text: string }
+export interface SourceRecipe { recipeId: string; name: string; imageUrl: string | null; cuisine: string | null; coverage: number }
+export interface AssistantReply { reply: string; actions: ProposedAction[]; sources: SourceRecipe[]; trace: string[] }
+export interface LibraryStatus { running: boolean; fetched: number; saved: number; embedded: number; error: string | null; total: number; embeddedTotal: number }
+export interface Facet { name: string; count: number }
+export interface ScannedItem { name: string; quantity: number; unit: string; expiresInDays: number | null }
+export type RecipeDraft = RecipeInput & { imageUrl: string | null; sourceUrl: string };
 
 // ---------------------------------------------------------------- API
 
@@ -181,6 +203,17 @@ export const api = createApi({
     getRecipes: builder.query<Recipe[], string | void>({
       query: (search) => search ? `/recipes?search=${encodeURIComponent(search)}` : '/recipes',
       providesTags: ['Recipes'],
+    }),
+    getRecipe: builder.query<Recipe, string>({
+      query: (id) => `/recipes/${id}`,
+      providesTags: (_r, _e, id) => [{ type: 'Recipes', id }],
+    }),
+    setRecipeSaved: builder.mutation<Recipe, { id: string; saved: boolean }>({
+      query: ({ id, saved }) => ({ url: `/recipes/${id}/saved`, method: 'PATCH', body: { saved } }),
+      invalidatesTags: ['Recipes', 'Kitchen'],
+    }),
+    importRecipeUrl: builder.mutation<Sourced<RecipeDraft>, string>({
+      query: (url) => ({ url: '/recipes/import-url', method: 'POST', body: { url } }),
     }),
     createRecipe: builder.mutation<Recipe, RecipeInput>({
       query: (body) => ({ url: '/recipes', method: 'POST', body }),
@@ -325,6 +358,29 @@ export const api = createApi({
       invalidatesTags: ['Recipes', 'MealPlan', 'Pantry', 'GroceryList', 'Substitutions', 'Constraints', 'Kitchen', 'Analytics'],
     }),
 
+    // Cookbook library (Discover + RAG knowledge base)
+    searchLibrary: builder.query<Sourced<RecipeMatch[]> & { semantic: boolean }, { q?: string; cuisine?: string; category?: string }>({
+      query: (params) => ({ url: '/library/search', params: Object.fromEntries(Object.entries(params).filter(([, v]) => v)) }),
+      providesTags: ['Kitchen'],
+    }),
+    getFacets: builder.query<{ cuisines: Facet[]; categories: Facet[] }, void>({
+      query: () => '/library/facets',
+      providesTags: ['Kitchen'],
+    }),
+    getLibraryStatus: builder.query<LibraryStatus, void>({
+      query: () => '/library/status',
+    }),
+    importLibrary: builder.mutation<LibraryStatus, void>({
+      query: () => ({ url: '/library/import', method: 'POST' }),
+    }),
+    scanGroceries: builder.mutation<Sourced<ScannedItem[]>, { image: string; mimeType: string; kind: 'fridge' | 'receipt' }>({
+      query: (body) => ({ url: '/ai/scan', method: 'POST', body }),
+    }),
+    bulkAddPantry: builder.mutation<{ added: number }, { name: string; quantity: number; unit: string; expirationDate: string | null }[]>({
+      query: (items) => ({ url: '/pantry/bulk', method: 'POST', body: { items } }),
+      invalidatesTags: ['Pantry', 'GroceryList', 'Kitchen'],
+    }),
+
     // Smart kitchen (Gemini with built-in fallbacks)
     getAiStatus: builder.query<{ enabled: boolean; model: string }, void>({
       query: () => '/ai/status',
@@ -354,14 +410,16 @@ export const api = createApi({
     estimateCost: builder.mutation<Sourced<CostEstimate>, void>({
       query: () => ({ url: '/ai/cost', method: 'POST' }),
     }),
-    askAssistant: builder.mutation<{ reply: string; actions: ProposedAction[] }, ChatMessage[]>({
+    askAssistant: builder.mutation<AssistantReply, ChatMessage[]>({
       query: (messages) => ({ url: '/ai/assistant', method: 'POST', body: { messages } }),
     }),
   }),
 });
 
 export const {
-  useGetRecipesQuery, useCreateRecipeMutation, useUpdateRecipeMutation, useDeleteRecipeMutation,
+  useGetRecipesQuery, useGetRecipeQuery, useSetRecipeSavedMutation, useImportRecipeUrlMutation,
+  useSearchLibraryQuery, useGetFacetsQuery, useGetLibraryStatusQuery, useImportLibraryMutation, useScanGroceriesMutation, useBulkAddPantryMutation,
+  useCreateRecipeMutation, useUpdateRecipeMutation, useDeleteRecipeMutation,
   useGetMealPlanQuery, useGetLeftoversQuery, useAddMealPlanEntryMutation, useUpdateMealPlanEntryMutation, useDeleteMealPlanEntryMutation,
   useGetPantryQuery, useAddPantryItemMutation, useUpdatePantryItemMutation, useDeletePantryItemMutation,
   useGetGroceryListQuery, useCheckGroceryItemMutation, useOverrideGroceryItemMutation, useMarkAlreadyHaveMutation,

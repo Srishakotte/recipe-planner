@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Clock3, Pencil, Plus, Refrigerator, Search, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import ScanModal from '../ScanModal';
+import { AlertTriangle, Camera, Clock3, Pencil, Plus, Refrigerator, Search, Trash2 } from 'lucide-react';
 import { useAddPantryItemMutation, useDeletePantryItemMutation, useGetPantryQuery, useUpdatePantryItemMutation, type PantryItem } from '../../../app/api';
 import { UNITS } from '../../../shared/constants';
 import { datePart, daysUntil, formatDay, relativeDay } from '../../../shared/dates';
@@ -77,6 +79,9 @@ export default function PantryPage() {
   const [remove] = useDeletePantryItemMutation();
   const [editing, setEditing] = useState<PantryItem | null | undefined>(undefined);
   const [search, setSearch] = useState('');
+  const [params, setParams] = useSearchParams();
+  const scanning = params.get('scan') === '1';
+  const setScanning = (on: boolean) => setParams(on ? { scan: '1' } : {}, { replace: true });
 
   const groups = useMemo(() => groupItems(items.filter(i => i.name.includes(search.toLowerCase().trim()))), [items, search]);
   const expired = items.filter(i => (status(i)?.days ?? 0) < 0);
@@ -93,6 +98,7 @@ export default function PantryPage() {
       <PageHeader title="Pantry" subtitle="What you have at home. The grocery list subtracts it automatically."
         actions={<>
           {expired.length > 0 && <Button size="sm" variant="secondary" icon={Trash2} onClick={clearExpired}>Remove {expired.length} expired</Button>}
+          <Button variant="ai" icon={Camera} onClick={() => setScanning(true)}>Scan photo</Button>
           <Button icon={Plus} onClick={() => setEditing(null)}>Add item</Button>
         </>} />
 
@@ -141,6 +147,7 @@ export default function PantryPage() {
       )}
 
       <ItemForm item={editing} onClose={() => setEditing(undefined)} />
+      <ScanModal open={scanning} onClose={() => setScanning(false)} />
     </div>
   );
 }

@@ -1,45 +1,75 @@
 @import "tailwindcss";
 
-/* Design tokens: one palette, one font, used through Tailwind classes (bg-brand-600, font-sans, ...) */
+/*
+ * "Mise" design tokens: warm paper, charcoal ink, paprika + saffron accents.
+ * slate-* is remapped to warm stone tones so every page picks up the palette.
+ */
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
 
-  --color-brand-50: #ecfdf5;
-  --color-brand-100: #d1fae5;
-  --color-brand-200: #a7f3d0;
-  --color-brand-500: #10b981;
-  --color-brand-600: #059669;
-  --color-brand-700: #047857;
-  --color-brand-900: #064e3b;
+  --color-brand-50: #fff4ed;
+  --color-brand-100: #ffe4d2;
+  --color-brand-200: #fec5a3;
+  --color-brand-500: #ea6a3a;
+  --color-brand-600: #d9532a;
+  --color-brand-700: #b43f1f;
+  --color-brand-900: #6b2412;
 
-  --color-canvas: #f7f7f5;
+  --color-saffron-100: #fdf0cf;
+  --color-saffron-400: #f4b740;
+  --color-saffron-500: #e9a12a;
+  --color-herb-50: #edf6ef;
+  --color-herb-600: #3f7d58;
+  --color-herb-700: #30644a;
+
+  --color-slate-50: #faf7f2;
+  --color-slate-100: #f3eee6;
+  --color-slate-200: #e7dfd3;
+  --color-slate-300: #d6cbbb;
+  --color-slate-400: #a89c8b;
+  --color-slate-500: #7c7063;
+  --color-slate-600: #5d5348;
+  --color-slate-700: #463e35;
+  --color-slate-800: #2e2822;
+  --color-slate-900: #1c1814;
+
+  --color-canvas: #fbf7f0;
+  --color-ink: #1c1814;
 
   --animate-fade-in: fade-in 0.25s ease-out both;
   --animate-slide-in-right: slide-in-right 0.25s ease-out both;
+  --animate-orb: orb 6s linear infinite;
 
-  @keyframes fade-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes slide-in-right {
-    from { opacity: 0; transform: translateX(24px); }
-    to { opacity: 1; transform: translateX(0); }
-  }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slide-in-right { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes orb { to { transform: rotate(360deg); } }
 }
 
 @layer base {
   html { -webkit-font-smoothing: antialiased; }
   body { @apply bg-canvas text-slate-800 font-sans; }
+  h1, h2, h3 { font-feature-settings: "ss01"; }
   button:not(:disabled) { cursor: pointer; }
   button:disabled { cursor: not-allowed; }
   :focus-visible { @apply outline-2 outline-offset-2 outline-brand-500; }
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-
-@media print {
-  aside, nav, button, .no-print { display: none !important; }
-  main { padding: 0 !important; }
+/* the AI "orb": a slowly turning saffron -> paprika -> plum gradient */
+.ai-orb { position: relative; isolation: isolate; }
+.ai-orb::before {
+  content: ""; position: absolute; inset: -40%; z-index: -1; border-radius: 9999px;
+  background: conic-gradient(from 0deg, #f4b740, #ea6a3a, #9b3d7a, #f4b740);
+  animation: var(--animate-orb); filter: blur(10px); opacity: .9;
 }
+
+/* soft paper grain for hero surfaces */
+.paper-grain { background-image: radial-gradient(rgba(28,24,20,.035) 1px, transparent 1px); background-size: 4px 4px; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #d6cbbb; border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+@media print { aside, nav, button, .no-print { display: none !important; } main { padding: 0 !important; } }

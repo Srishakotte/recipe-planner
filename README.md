@@ -3,6 +3,18 @@
 
 A meal planning app that lets you plan weekly meals, auto-generates a smart grocery list, handles unit conversions, pantry subtraction, substitutions and keeps everything in sync when plans change.
 
+
+## Mise: AI kitchen planner
+
+- **Discover**: ~800 real recipes with photos (TheMealDB, free API) searchable *by meaning*: hybrid RAG = Gemini embeddings (cosine) + keyword scoring, ranked by your pantry, expiring items and diet.
+- **Sous-chef**: tool-calling Gemini agent grounded in the cookbook, pantry, plan and grocery list; answers show the steps it took, recipe sources as photo cards, and one-click plan changes.
+- **Scan**: photo of a fridge or receipt → Gemini Vision → editable list → pantry.
+- **Import from any link**: schema.org Recipe (JSON-LD) parsing, Gemini fallback; free-text amounts parsed into units the grocery engine converts.
+- **Recipe page + Cook mode**: servings scaler, have/need against pantry, full-screen steps with timers and wake lock.
+- **UI**: React 19, Tailwind v4 design tokens, framer-motion, cmdk (Ctrl/Cmd+K), sonner, react-markdown.
+
+First run: open Discover and click **Load recipes** (one-time import; embeddings are built at ~90/min on the free Gemini tier). Recipe data and photos: [TheMealDB](https://www.themealdb.com) (free test key, for development/education).
+
 ---
 ## Demo Video
 

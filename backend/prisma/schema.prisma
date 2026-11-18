@@ -16,6 +16,15 @@ model Recipe {
   steps           String?  @db.Text
   embedding       Json?    // vector for semantic search (RAG), filled lazily
   embeddingKey    String?  // hash of the text that was embedded; stale when it changes
+  imageUrl        String?  @db.Text
+  source          String   @default("user") // user | library | web | ai
+  externalId      String?  @unique         // id in the source (TheMealDB)
+  cuisine         String?
+  category        String?
+  tags            String?  // comma separated
+  videoUrl        String?  @db.Text
+  sourceUrl       String?  @db.Text
+  saved           Boolean  @default(true)  // false = only in the Discover library, not in My recipes
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

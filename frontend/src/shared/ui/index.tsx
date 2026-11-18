@@ -12,11 +12,11 @@ export { cx };
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'ai';
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
+  primary: 'bg-ink text-white hover:bg-slate-700 shadow-sm',
   secondary: 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300',
   ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
   danger: 'bg-red-600 text-white hover:bg-red-700',
-  ai: 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 shadow-sm',
+  ai: 'bg-gradient-to-r from-saffron-500 via-brand-500 to-[#9b3d7a] text-white hover:brightness-110 shadow-sm shadow-brand-200',
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -32,8 +32,8 @@ export function Button({ variant = 'primary', size = 'md', icon: Icon, loading, 
       {...props}
       disabled={disabled || loading}
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 whitespace-nowrap',
-        size === 'sm' ? 'h-8 px-3 text-xs' : 'h-10 px-4 text-sm',
+        'inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors disabled:opacity-50 whitespace-nowrap',
+        size === 'sm' ? 'h-8 px-3.5 text-xs' : 'h-10 px-5 text-sm',
         buttonVariants[variant], className,
       )}
     >
@@ -68,7 +68,7 @@ export function ConfirmButton({ onConfirm, label = 'Delete', icon }: { onConfirm
 // ---------------------------------------------------------------- Layout pieces
 
 export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div {...props} className={cx('rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]', className)}>{children}</div>;
+  return <div {...props} className={cx('rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(28,24,20,0.04),0_8px_24px_-12px_rgba(28,24,20,0.08)]', className)}>{children}</div>;
 }
 
 export function CardHeader({ title, icon: Icon, subtitle, action }: { title: ReactNode; icon?: LucideIcon; subtitle?: ReactNode; action?: ReactNode }) {
@@ -77,7 +77,7 @@ export function CardHeader({ title, icon: Icon, subtitle, action }: { title: Rea
       <div className="flex items-start gap-3 min-w-0">
         {Icon && <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><Icon className="size-4" /></span>}
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+          <h2 className="font-display text-base font-semibold text-ink">{title}</h2>
           {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
         </div>
       </div>
@@ -90,7 +90,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -140,10 +140,10 @@ export function Stat({ label, value, icon: Icon, tone = 'slate' }: { label: stri
 type Tone = 'slate' | 'green' | 'amber' | 'red' | 'violet' | 'blue';
 const toneClasses: Record<Tone, string> = {
   slate: 'bg-slate-100 text-slate-600',
-  green: 'bg-brand-50 text-brand-700',
+  green: 'bg-herb-50 text-herb-700',
   amber: 'bg-amber-50 text-amber-700',
   red: 'bg-red-50 text-red-700',
-  violet: 'bg-violet-50 text-violet-700',
+  violet: 'bg-brand-50 text-brand-700',
   blue: 'bg-sky-50 text-sky-700',
 };
 
@@ -159,13 +159,13 @@ export function Badge({ tone = 'slate', icon: Icon, children, title }: { tone?: 
 export function SourceBadge({ source }: { source?: 'ai' | 'fallback' }) {
   if (!source) return null;
   return source === 'ai'
-    ? <Badge tone="violet" icon={Sparkles} title="Generated with Gemini">AI</Badge>
+    ? <Badge tone="violet" icon={Sparkles} title="Generated with Gemini">Gemini</Badge>
     : <Badge tone="slate" title="Built-in logic (add a Gemini key for AI)">Basic</Badge>;
 }
 
 // ---------------------------------------------------------------- Form controls
 
-const fieldClass = 'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50';
+const fieldClass = 'h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50';
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cx(fieldClass, className)} />;
@@ -209,10 +209,10 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
 
 export function Tabs<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[] }) {
   return (
-    <div className="inline-flex rounded-lg bg-slate-100 p-1">
+    <div className="inline-flex rounded-full bg-slate-100 p-1">
       {options.map(o => (
         <button key={o.value} onClick={() => onChange(o.value)}
-          className={cx('rounded-md px-3 py-1.5 text-xs font-medium transition-colors', value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800')}>
+          className={cx('rounded-full px-3 py-1.5 text-xs font-medium transition-colors', value === o.value ? 'bg-white text-ink shadow-sm' : 'text-slate-500 hover:text-slate-800')}>
           {o.label}
         </button>
       ))}

@@ -7,6 +7,9 @@ import MealPlanPage from './features/meal-plan/pages/MealPlanPage';
 import GroceryListPage from './features/grocery-list/pages/GroceryListPage';
 import PantryPage from './features/pantry/pages/PantryPage';
 import SubstitutionsPage from './features/substitutions/components/SubstitutionsPage';
+import DiscoverPage from './features/discover/DiscoverPage';
+import RecipePage from './features/recipes/pages/RecipePage';
+import ChefPage from './features/chef/ChefPage';
 
 function App() {
   return (
@@ -17,6 +20,9 @@ function App() {
           <Route path="home" element={<HomePage />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="recipes" element={<RecipesPage />} />
+          <Route path="recipes/:id" element={<RecipePage />} />
+          <Route path="discover" element={<DiscoverPage />} />
+          <Route path="chef" element={<ChefPage />} />
           <Route path="meal-plan" element={<MealPlanPage />} />
           <Route path="grocery-list" element={<GroceryListPage />} />
           <Route path="pantry" element={<PantryPage />} />

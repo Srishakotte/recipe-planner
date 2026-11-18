@@ -8,8 +8,10 @@ async function main() {
   await prisma.groceryItem.deleteMany();
   await prisma.groceryGeneration.deleteMany();
   await prisma.mealPlanEntry.deleteMany();
-  await prisma.ingredient.deleteMany();
-  await prisma.recipe.deleteMany();
+  // the downloaded cookbook library is kept; only your own recipes are replaced
+  await prisma.ingredient.deleteMany({ where: { recipe: { source: { not: 'library' } } } });
+  await prisma.recipe.deleteMany({ where: { source: { not: 'library' } } });
+  await prisma.recipe.updateMany({ where: { source: 'library' }, data: { saved: false } });
   await prisma.pantryItem.deleteMany();
   await prisma.substitution.deleteMany();
   await prisma.userConstraint.deleteMany();

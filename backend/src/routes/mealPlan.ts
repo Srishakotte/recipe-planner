@@ -36,8 +36,10 @@ router.get('/leftovers', asyncHandler(async (_req, res) => {
 
 router.post('/', asyncHandler(async (req, res) => {
   const body = parseBody(entrySchema, req.body);
-  const recipe = await prisma.recipe.findUnique({ where: { id: body.recipeId }, select: { defaultServings: true } });
+  const recipe = await prisma.recipe.findUnique({ where: { id: body.recipeId }, select: { defaultServings: true, saved: true } });
   if (!recipe) throw new HttpError(404, 'Recipe not found');
+  // planning a Discover recipe adds it to My recipes
+  if (!recipe.saved) await prisma.recipe.update({ where: { id: body.recipeId }, data: { saved: true } });
   res.status(201).json(await prisma.mealPlanEntry.create({
     data: {
       recipeId: body.recipeId, planDate: new Date(body.planDate), mealSlot: body.mealSlot ?? 'dinner',

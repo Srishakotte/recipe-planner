@@ -34,10 +34,11 @@ function RecipeFormModal({ recipe, onClose }: { recipe: Recipe | null; onClose: 
     e.preventDefault();
     const data: RecipeInput = {
       name: name.trim(), description, steps, defaultServings: servings,
+      imageUrl: recipe?.imageUrl ?? null, cuisine: recipe?.cuisine ?? null, category: recipe?.category ?? null, sourceUrl: recipe?.sourceUrl ?? null,
       ingredients: rows.filter(r => r.name.trim()).map(r => ({ ...r, displayName: r.displayName || r.name })),
     };
     try {
-      if (recipe) await update({ id: recipe.id, data }).unwrap();
+      if (recipe?.id) await update({ id: recipe.id, data }).unwrap();
       else await create(data).unwrap();
       toast.success(recipe ? 'Recipe updated' : 'Recipe created');
       onClose();
@@ -45,10 +46,10 @@ function RecipeFormModal({ recipe, onClose }: { recipe: Recipe | null; onClose: 
   };
 
   return (
-    <Modal open onClose={onClose} wide title={recipe ? `Edit ${recipe.name}` : 'New recipe'}
+    <Modal open onClose={onClose} wide title={recipe?.id ? `Edit ${recipe.name}` : recipe ? 'Review imported recipe' : 'New recipe'}
       footer={<>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button type="submit" form="recipe-form" loading={creating || updating}>{recipe ? 'Save changes' : 'Create recipe'}</Button>
+        <Button type="submit" form="recipe-form" loading={creating || updating}>{recipe?.id ? 'Save changes' : 'Save recipe'}</Button>
       </>}>
       <form id="recipe-form" onSubmit={submit} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
