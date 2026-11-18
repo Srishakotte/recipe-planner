@@ -89,6 +89,17 @@ function cacheSet(key: string, value: unknown) {
 const hashOf = (...parts: unknown[]) => createHash('sha1').update(JSON.stringify(parts)).digest('hex');
 
 /** Ask Gemini for JSON matching `schema`. Returns null on any failure (no key, quota, bad output). */
+/**
+ * Gemini rejects schemas with many numeric/length bounds ("too many states"), especially the
+ * lite models. Send the shape only; zod still enforces every bound on the answer.
+ */
+const BOUND_KEYS = new Set(['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minItems', 'maxItems', 'minLength', 'maxLength', 'pattern', 'format', '$schema']);
+function relaxed(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(relaxed);
+  if (!schema || typeof schema !== 'object') return schema;
+  return Object.fromEntries(Object.entries(schema).filter(([k]) => !BOUND_KEYS.has(k)).map(([k, v]) => [k, relaxed(v)]));
+}
+
 /** Text, or text + images (base64) for Gemini Vision. */
 export type Prompt = string | ({ text: string } | { inlineData: { mimeType: string; data: string } })[];
 
@@ -107,7 +118,7 @@ export async function ask<T>(schema: ZodType<T>, prompt: Prompt, options: { syst
       config: {
         systemInstruction: options.system,
         responseMimeType: 'application/json',
-        responseJsonSchema: z.toJSONSchema(schema as never),
+        responseJsonSchema: relaxed(z.toJSONSchema(schema as never)),
         temperature: 0.4,
       },
     }, 'generateContent', options.timeoutMs);
